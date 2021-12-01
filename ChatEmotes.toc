@@ -7,7 +7,7 @@
 ## Dependencies: 
 ## X-Curse-Project-ID: 551565
 ## X-WoWI-ID: 0
-## X-Wago-ID: 00000000
+## X-Wago-ID: PANzvjN4
 ## X-AddonProvider: github
 libs/LibStub/LibStub.lua
 libs/ChatEmotesLib-1.0/ChatEmotesLib-1.0.lua
