@@ -579,14 +579,14 @@ do
 	end
 
 	function UIEmoteButtonMixin:Update()
-		local emote = self.emote
-		if IsFavorite(emote) then
-			self.Background:SetColorTexture(0.2, 0.2, 0, 1)
-			self.MouseoverOverlay:SetColorTexture(0.6, 0.6, 0.4, 1)
-		else
-			self.Background:SetColorTexture(0.1, 0.1, 0.1, 1)
-			self.MouseoverOverlay:SetColorTexture(0.4, 0.4, 0.4, 1)
-		end
+		-- local emote = self.emote
+		-- if IsFavorite(emote) then
+		-- 	self.Background:SetColorTexture(0.2, 0.2, 0, 1)
+		-- 	self.MouseoverOverlay:SetColorTexture(0.6, 0.6, 0.4, 1)
+		-- else
+		-- 	self.Background:SetColorTexture(0.1, 0.1, 0.1, 1)
+		-- 	self.MouseoverOverlay:SetColorTexture(0.4, 0.4, 0.4, 1)
+		-- end
 	end
 
 	local SearchDataProviderResultsFormat = "Results: %d"
