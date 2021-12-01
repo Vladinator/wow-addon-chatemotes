@@ -1,0 +1,12 @@
+## Interface: 90105
+## Title: Chat Emotes
+## Notes: Yet another emotes related chat addon, jeez...
+## Author: Vladinator (Vladinator-TarrenMill)
+## Version: 9.1.5.211201 (@project-version@)
+## SavedVariables: ChatEmotesDB
+## X-Curse-Project-ID: 551565
+## X-WoWI-ID: 0
+## X-AddonProvider: github
+libs/LibStub/LibStub.lua
+libs/ChatEmotesLib-1.0/ChatEmotesLib-1.0.lua
+core.lua

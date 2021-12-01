@@ -1,0 +1,18 @@
+{
+    "Lua.diagnostics.globals": [
+        "LibStub",
+        "GameTooltip",
+        "ChatEdit_GetActiveWindow",
+        "ChatEdit_InsertLink",
+        "ChatFrame_OpenChat",
+        "CallbackRegistryMixin",
+        "DataProviderMixin",
+        "CreateDataProvider",
+        "ScrollBoxConstants",
+        "ScrollBoxListMixin",
+        "SetScrollBoxButtonAlternateState",
+        "CreateScrollBoxListLinearView",
+        "CreateScrollBoxListGridView",
+        "ScrollUtil"
+    ]
+}
