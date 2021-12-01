@@ -10,7 +10,11 @@ local addonFrame ---@type VladsChatEmotesUIMixin
 local addonButton ---@type VladsChatEmotesUIButton
 local PanelTitle = "Chat Emotes"
 
-local defaults = { point = "LEFT", relativePoint = "LEFT", x = 15, y = -175, width = 335, height = 345 }
+local defaults = {
+	position = { point = "LEFT", relativePoint = "LEFT", x = 15, y = -175, width = 335, height = 345 },
+	favorites = {},
+	statistics = {},
+}
 ChatEmotesDB = setmetatable({}, { __index = defaults })
 local DB = ChatEmotesDB
 
@@ -60,10 +64,92 @@ local supportedChatEvents = {
 	"CHAT_MSG_YELL",
 }
 
+local function ChatInsert(text, noPadding)
+	if not noPadding then
+		text = format("%s ", text)
+	end
+	if ChatEdit_GetActiveWindow() then
+		ChatEdit_InsertLink(text)
+	else
+		ChatFrame_OpenChat(text)
+	end
+end
+
+---@param emote ChatEmotesLib-1.0_Emote
+local function GetEmoteUniqueKey(emote)
+	return format("%s %s", emote.package, emote.name)
+end
+
+---@param emote ChatEmotesLib-1.0_Emote
+local function IsFavorite(emote)
+	local unique = GetEmoteUniqueKey(emote)
+	return DB.favorites[unique]
+end
+
+---@param emote ChatEmotesLib-1.0_Emote
+---@param noUpdates? boolean
+local function AddToFavorites(emote, noUpdates)
+	local unique = GetEmoteUniqueKey(emote)
+	DB.favorites[unique] = true
+	if not noUpdates then
+		addonFrame:UpdateEmoteFrames(emote)
+	end
+end
+
+---@param emote ChatEmotesLib-1.0_Emote
+---@param noUpdates? boolean
+local function RemoveFromFavorites(emote, noUpdates)
+	local unique = GetEmoteUniqueKey(emote)
+	DB.favorites[unique] = nil
+	if not noUpdates then
+		addonFrame:UpdateEmoteFrames(emote)
+	end
+end
+
+---@param emote ChatEmotesLib-1.0_Emote
+---@param noUpdates? boolean
+local function ToggleFavorite(emote, noUpdates)
+	if IsFavorite(emote) then
+		RemoveFromFavorites(emote, noUpdates)
+	else
+		AddToFavorites(emote, noUpdates)
+	end
+end
+
+---@param emote ChatEmotesLib-1.0_Emote
+local function GetStatistics(emote, createIfMissing)
+	local unique = GetEmoteUniqueKey(emote)
+	local emoteStats = DB.statistics[unique]
+	if createIfMissing and not emoteStats then
+		emoteStats = {}
+		DB.statistics[unique] = emoteStats
+	end
+	return emoteStats
+end
+
+---@param emotes ChatEmotesLib-1.0_Emote[]
+local function LogEmoteStatistics(emotes, guid)
+	local isPlayer = guid == UnitGUID("player")
+	for _, emote in ipairs(emotes) do
+		local emoteStats = GetStatistics(emote, true)
+		if isPlayer then
+			emoteStats.sent = (emoteStats.sent or 0) + 1
+		else
+			emoteStats.received = (emoteStats.received or 0) + 1
+			if not emoteStats.receivedFrom then
+				emoteStats.receivedFrom = {}
+			end
+			emoteStats.receivedFrom[guid] = (emoteStats.receivedFrom[guid] or 0) + 1
+		end
+	end
+end
+
+local prevLineID
+
 ---@param self EditBox
 ---@param event string
 ---@param text string
-local function ChatMessageFilter(self, event, text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, ...)
+local function ChatMessageFilter(self, event, text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, ...)
 	local isIgnored = zoneChannelID and zoneChannelID ~= 0 and ignoreChannels[zoneChannelID]
 	if isIgnored then
 		return
@@ -73,9 +159,13 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 		return
 	end
 	local _, height = self:GetFont()
-	local newText = CEL.ReplaceEmotesInText(text, height)
+	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, true)
 	if newText then
-		return false, newText, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, ...
+		if prevLineID ~= lineID then
+			prevLineID = lineID
+			LogEmoteStatistics(usedEmotes, guid)
+		end
+		return false, newText, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, ...
 	end
 end
 
@@ -283,11 +373,7 @@ local function ChatFrameOnHyperlinkClick(self, link, text, button)
 	if button == "RightButton" then
 		addon:ToggleFrame(emote)
 	else
-		if ChatEdit_GetActiveWindow() then
-			ChatEdit_InsertLink(emote.name)
-		else
-			ChatFrame_OpenChat(emote.name)
-		end
+		ChatInsert(emote.name)
 	end
 end
 
@@ -426,7 +512,7 @@ do
 		-- self.LeftLabel:SetHeight(ButtonSize)
 		-- self.LeftLabel:SetPoint("LEFT", 5, 0)
 		-- self.LeftLabel:SetPoint("RIGHT", self.RightLabel, "LEFT", -5, 0)
-		self.Label = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		self.Label = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall", 1)
 		self.Label:SetJustifyH("CENTER")
 		self.Label:SetJustifyV("MIDDLE")
 		self.Label:SetAllPoints()
@@ -434,7 +520,7 @@ do
 		self.Background = self:CreateTexture(nil, "BACKGROUND", nil, 1)
 		self.Background:SetAllPoints()
 		self.Background:SetColorTexture(0.1, 0.1, 0.1, 1)
-		self.MouseoverOverlay = self:CreateTexture(nil, "OVERLAY")
+		self.MouseoverOverlay = self:CreateTexture(nil, "ARTWORK", 2)
 		self.MouseoverOverlay:SetAllPoints()
 		self.MouseoverOverlay:SetColorTexture(0.5, 0.5, 0.5, 1)
 		self.MouseoverOverlay:Hide()
@@ -442,6 +528,12 @@ do
 		self.Alternate:SetAllPoints()
 		self.Alternate:SetColorTexture(0.2, 0.2, 0.2, 1)
 		self.Alternate:Hide()
+		-- self.Star = self:CreateTexture(nil, "OVERLAY", nil, 1)
+		-- self.Star:SetTexture(2923258)
+		-- self.Star:SetTexCoord(2/32, 16/32, 2/32, 16/32)
+		-- self.Star:SetSize(16, 16)
+		-- self.Star:SetPoint("TOPRIGHT", 1, 1)
+		-- self.Star:Hide()
 		self:SetScript("OnEnter", self.OnEnter)
 		self:SetScript("OnLeave", self.OnLeave)
 		self:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -454,6 +546,7 @@ do
 		-- self.RightLabel:SetText(emote.markup)
 		self.emote = emote
 		self.Label:SetText(emote.markup)
+		self:Update()
 	end
 
 	function UIEmoteButtonMixin:OnEnter()
@@ -475,18 +568,25 @@ do
 	function UIEmoteButtonMixin:OnClick(button)
 		local emote = self.emote
 		if button == "LeftButton" then
-			if ChatEdit_GetActiveWindow() then
-				ChatEdit_InsertLink(emote.name)
-			else
-				ChatFrame_OpenChat(emote.name)
-			end
+			ChatInsert(emote.name)
 		elseif button == "RightButton" then
-			-- TODO: favorites
+			ToggleFavorite(emote)
 		end
 	end
 
 	function UIEmoteButtonMixin:SetAlternateOverlayShown(alternate)
 		self.Alternate:SetShown(alternate)
+	end
+
+	function UIEmoteButtonMixin:Update()
+		local emote = self.emote
+		if IsFavorite(emote) then
+			self.Background:SetColorTexture(0.2, 0.2, 0, 1)
+			self.MouseoverOverlay:SetColorTexture(0.6, 0.6, 0.4, 1)
+		else
+			self.Background:SetColorTexture(0.1, 0.1, 0.1, 1)
+			self.MouseoverOverlay:SetColorTexture(0.4, 0.4, 0.4, 1)
+		end
 	end
 
 	local SearchDataProviderResultsFormat = "Results: %d"
@@ -532,11 +632,12 @@ do
 	end
 
 	function UIMixin:OnShow()
-		local width, height = DB.width, DB.height
+		local position = DB.position
+		local width, height = position.width, position.height
 		if not width then
 			width, height = DefaultPanelWidth, DefaultPanelHeight
 		end
-		local point, relativeTo, relativePoint, x, y = DB.point, DB.relativeTo, DB.relativePoint, DB.x, DB.y
+		local point, relativeTo, relativePoint, x, y = position.point, position.relativeTo, position.relativePoint, position.x, position.y
 		if not point then
 			point, relativeTo, relativePoint, x, y = "CENTER", nil, "CENTER", 0, 0
 		end
@@ -550,8 +651,9 @@ do
 		if not point then
 			return
 		end
-		DB.width, DB.height = self:GetSize()
-		DB.point, DB.relativeTo, DB.relativePoint, DB.x, DB.y = point, relativeTo and relativeTo:GetName() or nil, relativePoint, x, y
+		local position = DB.position
+		position.width, position.height = self:GetSize()
+		position.point, position.relativeTo, position.relativePoint, position.x, position.y = point, relativeTo and relativeTo:GetName() or nil, relativePoint, x, y
 	end
 
 	function UIMixin:OnSearchDataProviderChanged(hasSortComparator)
@@ -667,31 +769,31 @@ do
 			SetOnDataRangeChanged(self.Log.Events.ScrollBox)
 		end
 		---@param elementData ChatEmotesLib-1.0_Emote
-		local function AddEventToFilter(scrollBox, elementData)
-			local found = self.filterDataProvider:FindElementDataByPredicate(
-				function(filterData)
-					return filterData == elementData
-				end
-			)
-			if found then
-				found.enabled = true
-				local button = scrollBox:FindFrame(elementData)
-				if button then
-					button:UpdateEnabledState()
-				end
-			else
-				self.filterDataProvider:Insert(elementData)
-			end
-			self:RemoveFromDataProvider(self.logDataProvider, elementData)
-			self:RemoveFromDataProvider(self.searchDataProvider, elementData)
-		end
+		-- local function AddEventToFilter(scrollBox, elementData)
+		-- 	local found = self.filterDataProvider:FindElementDataByPredicate(
+		-- 		function(filterData)
+		-- 			return filterData == elementData
+		-- 		end
+		-- 	)
+		-- 	if found then
+		-- 		found.enabled = true
+		-- 		local button = scrollBox:FindFrame(elementData)
+		-- 		if button then
+		-- 			button:UpdateEnabledState()
+		-- 		end
+		-- 	else
+		-- 		self.filterDataProvider:Insert(elementData)
+		-- 	end
+		-- 	self:RemoveFromDataProvider(self.logDataProvider, elementData)
+		-- 	self:RemoveFromDataProvider(self.searchDataProvider, elementData)
+		-- end
 		do
 			---@param elementData ChatEmotesLib-1.0_Emote
 			---@param text string
-			local function LocateInSearch(elementData, text)
-				self.pendingSearch = elementData
-				self.Log.Bar.SearchBox:SetText(text)
-			end
+			-- local function LocateInSearch(elementData, text)
+			-- 	self.pendingSearch = elementData
+			-- 	self.Log.Bar.SearchBox:SetText(text)
+			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
 			view:SetElementExtent(ButtonSize)
 			---@param factory function
@@ -717,21 +819,21 @@ do
 		end
 		do
 			---@param elementData ChatEmotesLib-1.0_Emote
-			local function LocateInLog(elementData)
-				self.Log.Bar.SearchBox:SetText()
-				self:DisplayEvents()
-				local found = self.Log.Events.ScrollBox:ScrollToElementDataByPredicate(
-					function(data)
-						return data == elementData
-					end,
-					ScrollBoxConstants.AlignCenter,
-					ScrollBoxConstants.NoScrollInterpolation
-				)
-				local button = found and self.Log.Events.ScrollBox:FindFrame(found)
-				if button then
-					button:Flash()
-				end
-			end
+			-- local function LocateInLog(elementData)
+			-- 	self.Log.Bar.SearchBox:SetText()
+			-- 	self:DisplayEvents()
+			-- 	local found = self.Log.Events.ScrollBox:ScrollToElementDataByPredicate(
+			-- 		function(data)
+			-- 			return data == elementData
+			-- 		end,
+			-- 		ScrollBoxConstants.AlignCenter,
+			-- 		ScrollBoxConstants.NoScrollInterpolation
+			-- 	)
+			-- 	local button = found and self.Log.Events.ScrollBox:FindFrame(found)
+			-- 	if button then
+			-- 		button:Flash()
+			-- 	end
+			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
 			view:SetElementExtent(ButtonSize)
 			---@param factory function
@@ -771,6 +873,16 @@ do
 	---@param emote ChatEmotesLib-1.0_Emote
 	function UIMixin:ShowEmote(emote)
 		self:Show() -- TODO: find emote and scroll to where it is located and highlight the frame
+	end
+
+	---@param emote ChatEmotesLib-1.0_Emote
+	function UIMixin:UpdateEmoteFrames(emote)
+		local scrollBox = self.Log.Events:IsShown() and self.Log.Events.ScrollBox or self.Log.Search.ScrollBox
+		scrollBox:ForEachFrame(function(button)
+			if not emote or emote == button.emote then
+				button:Update()
+			end
+		end)
 	end
 
 	function CreateUI(frameName)
@@ -918,6 +1030,11 @@ end
 local function Init()
 	ChatEmotesDB = type(ChatEmotesDB) == "table" and ChatEmotesDB or {}
 	DB = setmetatable(ChatEmotesDB, { __index = defaults })
+	for k, v in pairs(defaults) do
+		if type(rawget(DB, k)) ~= "table" then
+			DB[k] = v
+		end
+	end
 	UpdateChannelsReduntant()
 	for _, event in ipairs(supportedChatEvents) do
 		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global

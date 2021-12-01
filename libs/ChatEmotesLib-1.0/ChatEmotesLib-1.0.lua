@@ -566,7 +566,7 @@ local function ReplaceEmotesInText(text, height)
 		for raw, emoteName in text:gmatch(emotePattern) do
 			local emote = EL.GetEmoteSearch(emoteName, EL.filter.sameNameCaseless)
 			if emote then
-				return EL.SafeReplace(text, raw, emote, true, height)
+				return EL.SafeReplace(text, raw, emote, true, height), emote
 			end
 		end
 	end
@@ -575,7 +575,7 @@ local function ReplaceEmotesInText(text, height)
 		for raw, emoteName in text:gmatch(emotePattern) do
 			local emote = EL.GetEmoteSearch(emoteName, EL.filter.sameName)
 			if emote then
-				return EL.SafeReplace(text, raw, emote, true, height)
+				return EL.SafeReplace(text, raw, emote, true, height), emote
 			end
 		end
 	end
@@ -583,8 +583,9 @@ end
 
 ---@param text string
 ---@param height? number
----@return string|nil
-function EL.ReplaceEmotesInText(text, height)
+---@param usedEmotes? boolean
+---@return string|nil, ChatEmotesLib-1.0_Emote[]
+function EL.ReplaceEmotesInText(text, height, usedEmotes)
 	local segments = SafeSplit(text)
 	local length = segments.length
 	if length == 0 then
@@ -592,13 +593,21 @@ function EL.ReplaceEmotesInText(text, height)
 	end
 	local results = StringBuffer()
 	local replaced
+	local emotes
 	for i = 1, length do
 		local segment = segments[i]
 		local buffer = table.concat(segment.buffer, "")
 		if segment.buffer[1] ~= "|" then
-			local replacement = ReplaceEmotesInText(buffer, height)
+			local replacement, replacementEmote = ReplaceEmotesInText(buffer, height)
 			if replacement then
 				replaced = true
+				if usedEmotes then
+					if not emotes then
+						emotes = { [0] = 0 }
+					end
+					emotes[0] = emotes[0] + 1
+					emotes[emotes[0]] = replacementEmote
+				end
 				buffer = replacement
 			end
 		end
@@ -607,7 +616,7 @@ function EL.ReplaceEmotesInText(text, height)
 	if not replaced or results.length == 0 then
 		return
 	end
-	return table.concat(results, "")
+	return table.concat(results, ""), emotes
 end
 
 ---@param text string
