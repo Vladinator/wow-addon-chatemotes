@@ -259,14 +259,17 @@ do
 					end
 					break
 				end
-				if level == 0 and skip > 0 then
+				if level > 0 then
+					break
+				end
+				if skip > 0 then
 					skip = skip - 1
 					if skip == 0 then
 						segment = segments()
 					end
 					break
 				end
-				if level == 0 and chr == " " then
+				if chr == " " then
 					segment = segments()
 					break
 				end
@@ -635,10 +638,10 @@ end
 --[=[
 
 -- Run the test suite using:
--- /dump EmotesLibTest(400)
+-- /dump EmotesLibTest(1000)
 
 -- Run specific test type using:
--- /dump EmotesLibTest(400, 1)
+-- /dump EmotesLibTest(1000, 1)
 
 local function randomString(maxLen, minLen)
 	local len = random(minLen or 1, maxLen)
