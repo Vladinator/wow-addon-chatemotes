@@ -938,6 +938,7 @@ local function Init()
 	hooksecurefunc("AutoComplete_UpdateResults", AutoComplete_UpdateResults)
 	CreateSlashCommand()
 	addonButton = CreateButton("VladsChatEmotesButton")
+	C_Timer.After(1, addonButton.UpdateTexture)
 end
 
 addon:SetScript("OnEvent", function(self, event, ...) self[event](self, event, ...) end)

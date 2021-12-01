@@ -4,8 +4,10 @@
 ## Author: Vladinator (Vladinator-TarrenMill)
 ## Version: 9.1.5.211201 (@project-version@)
 ## SavedVariables: ChatEmotesDB
+## Dependencies: 
 ## X-Curse-Project-ID: 551565
 ## X-WoWI-ID: 0
+## X-Wago-ID: 00000000
 ## X-AddonProvider: github
 libs/LibStub/LibStub.lua
 libs/ChatEmotesLib-1.0/ChatEmotesLib-1.0.lua
