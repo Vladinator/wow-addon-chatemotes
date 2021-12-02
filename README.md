@@ -21,6 +21,13 @@ Using `#` will start searching for emotes fitting the text you write. Tab to cyc
 
 ![image](https://user-images.githubusercontent.com/8304135/143776710-0b8f16ea-24b4-4e06-84fa-d19f41fe562d.png)
 
+Extra
+======================
+
+- You can hover emotes in chat to display their name and a larger preview.
+- Clicking emotes will insert it into your edit box for sending.
+- Right-clicking emotes will open the emote picker.
+
 Preview
 ======================
 ![image](https://user-images.githubusercontent.com/8304135/143776308-f12569e2-8174-4398-b9f0-7c9385b44901.png)
