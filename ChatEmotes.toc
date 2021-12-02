@@ -9,6 +9,4 @@
 ## X-WoWI-ID: 26188
 ## X-Wago-ID: PANzvjN4
 ## X-AddonProvider: github
-libs/LibStub/LibStub.lua
-libs/ChatEmotesLib-1.0/ChatEmotesLib-1.0.lua
-core.lua
+core.xml

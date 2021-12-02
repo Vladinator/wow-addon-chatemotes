@@ -1,22 +1,72 @@
+if WOW_PROJECT_ID ~= WOW_PROJECT_MAINLINE then return end
+
 local CEL = LibStub and LibStub("ChatEmotesLib-1.0", true) ---@type ChatEmotesLib-1.0
 if not CEL then return end
 
 local _G = _G
 local strlenutf8 = _G.strlenutf8
 
-local addonName, ns = ...
-local addon = CreateFrame("Frame")
-local addonFrame ---@type VladsChatEmotesUIMixin
-local addonButton ---@type VladsChatEmotesUIButton
-local PanelTitle = "Chat Emotes"
+---@class ChatEmotesLocale
+---@field public LOCALE_NAME string
+---@field public CHAT_EMOTES string
+---@field public YOU_HAVE_NO_EMOTES_INSTALLED string
+---@field public SEARCH_RESULTS string
+---@field public CHAT_EMOTES_OPTIONS string
+---@field public OPTIONS string
 
+---@class ChatEmotesNamespace
+---@field public NewLocale function
+---@field public IsSameLocale function
+---@field public L ChatEmotesLocale
+
+local addonName = ... ---@type string @The name of the addon.
+local ns = select(2, ...) ---@type ChatEmotesNamespace @The addon namespace.
+local L = ns.L
+
+local addon = CreateFrame("Frame")
+local addonFrame ---@type ChatEmotesUIMixin
+local addonButton ---@type ChatEmotesUIButton
+local addonConfigFrame ---@type ChatEmotesUIConfigMixin
+
+---@class ChatEmoteStatistics
+---@field public sent? number|nil
+---@field public received? number|nil
+
+---@class ChatEmotesDB_Options
+---@field public emoteScale number
+
+---@class ChatEmotesDB_Position
+---@field public point string
+---@field public relativeTo? string|nil
+---@field public relativePoint string
+---@field public x number
+---@field public y number
+---@field public width number
+---@field public height number
+
+---@class ChatEmotesDB
+---@field public options ChatEmotesDB_Options
+---@field public position ChatEmotesDB_Position
+---@field public favorites table<string, boolean|nil>
+---@field public statistics table<string, ChatEmoteStatistics>
+
+local DB ---@type ChatEmotesDB
 local defaults = {
-	position = { point = "LEFT", relativePoint = "LEFT", x = 15, y = -175, width = 335, height = 345 },
+	options = {
+		emoteScale = 1.25,
+	},
+	position = {
+		point = "LEFT",
+		relativeTo = nil,
+		relativePoint = "LEFT",
+		x = 15,
+		y = -175,
+		width = 335,
+		height = 345,
+	},
 	favorites = {},
 	statistics = {},
 }
-ChatEmotesDB = setmetatable({}, { __index = defaults })
-local DB = ChatEmotesDB
 
 ---@type table<string, number>
 local activeChannels = {}
@@ -41,8 +91,14 @@ local ignoreChannels = {
 	-- [41] = true, -- ChromieTime (Chromie Time - Legion)
 }
 
----@class ChatFrame : Frame
----@field public editBox EditBox
+---@class ScrollingMessageFrame : FontString, Frame
+
+---@class ChatFrameEditBox : EditBox
+---@field public autoCompleteSource? function|nil
+---@field public customAutoCompleteFunction? function|nil
+
+---@class ChatFrame : ScrollingMessageFrame
+---@field public editBox ChatFrameEditBox
 
 local supportedChatEvents = {
 	"CHAT_MSG_BN_CONVERSATION",
@@ -128,6 +184,7 @@ local function GetStatistics(emote, createIfMissing)
 end
 
 ---@param emotes ChatEmotesLib-1.0_Emote[]
+---@param guid string
 local function LogEmoteStatistics(emotes, guid)
 	local isPlayer = guid == UnitGUID("player")
 	for _, emote in ipairs(emotes) do
@@ -144,9 +201,24 @@ local function LogEmoteStatistics(emotes, guid)
 	end
 end
 
+---@param chatFrame ChatFrame
+---@param forceScale? number|nil
+---@param heightOffset? number|nil
+---@return number
+local function GetHeightForChatFrame(chatFrame, forceScale, heightOffset)
+	local _, height = chatFrame:GetFont()
+	if not height or height < 1 then
+		height = CHAT_FRAME_DEFAULT_FONT_SIZE or 14 ---@diagnostic disable-line: undefined-global
+	end
+	if heightOffset then
+		height = height + heightOffset
+	end
+	return height * (forceScale or DB.options.emoteScale)
+end
+
 local prevLineID
 
----@param self EditBox
+---@param self ChatFrame
 ---@param event string
 ---@param text string
 local function ChatMessageFilter(self, event, text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, ...)
@@ -158,7 +230,7 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 	if not isActive then
 		return
 	end
-	local _, height = self:GetFont()
+	local height = GetHeightForChatFrame(self)
 	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, true)
 	if newText then
 		if prevLineID ~= lineID then
@@ -241,9 +313,9 @@ local function AutoCompleteSource(text, maxResults, utf8Position, allowFullMatch
 			autoCompleteCache[index] = {
 				name = emote.name,
 				priority = priority,
-				twitchemote = emote,
-				twitchemotefrom = sfrom,
-				twitchemoteto = sto,
+				chatemote = emote,
+				chatemotefrom = sfrom,
+				chatemoteto = sto,
 			}
 		end
 	end
@@ -262,18 +334,18 @@ local function AutoCompleteSource(text, maxResults, utf8Position, allowFullMatch
 	return autoCompleteCache
 end
 
----@param self EditBox
+---@param self ChatFrameEditBox
 ---@param newText string
 ---@param result table
 ---@param name string
 local function AutoCompleteAccept(self, newText, result, name)
-	local emote = result.twitchemote ---@type ChatEmotesLib-1.0_Emote
+	local emote = result.chatemote ---@type ChatEmotesLib-1.0_Emote
 	if not emote then
 		return true
 	end
 	local text = self:GetText()
-	local prefix = text:sub(1, result.twitchemotefrom - 1)
-	local suffix = text:sub(result.twitchemoteto + 1)
+	local prefix = text:sub(1, result.chatemotefrom - 1)
+	local suffix = text:sub(result.chatemoteto + 1)
 	local updatedText = format("%s%s%s", prefix, emote.name, suffix)
 	self:SetText(updatedText)
 	self:SetCursorPosition(strlenutf8(updatedText) - strlenutf8(suffix))
@@ -282,7 +354,7 @@ end
 
 local origAutoCompletFuncs = {}
 
----@param self EditBox
+---@param self ChatFrameEditBox
 local function CacheOrigAutoCompletFuncs(self)
 	local cache = origAutoCompletFuncs[self]
 	if not cache then
@@ -303,18 +375,19 @@ local function CacheOrigAutoCompletFuncs(self)
 	return cache
 end
 
+---@param self ChatFrameEditBox
 local function CacheOrigAutoCompletFuncsRestore(self)
 	local cache = CacheOrigAutoCompletFuncs(self)
 	self.autoCompleteSource = cache.autoCompleteSource
 	self.customAutoCompleteFunction = cache.customAutoCompleteFunction
 end
 
----@param self EditBox
+---@param self ChatFrameEditBox
 local function AutoCompleteEditBox_SetAutoCompleteSource(self, source)
 	CacheOrigAutoCompletFuncs(self)
 end
 
----@param self EditBox
+---@param self ChatFrameEditBox
 local function AutoCompleteEditBox_SetCustomAutoCompleteFunction(self)
 	CacheOrigAutoCompletFuncs(self)
 end
@@ -325,7 +398,7 @@ end
 local function AutoComplete_UpdateResults(autoCompleteBox, results, context)
 	local self = autoCompleteBox.parent ---@diagnostic disable-line
 	local first = results[1]
-	if not first or not first.twitchemote then
+	if not first or not first.chatemote then
 		CacheOrigAutoCompletFuncsRestore(self)
 		return
 	end
@@ -335,7 +408,7 @@ local function AutoComplete_UpdateResults(autoCompleteBox, results, context)
 		local button = _G["AutoCompleteButton" .. i] ---@type Button
 		if button:IsEnabled() then
 			local result = button.nameInfo ---@diagnostic disable-line
-			local emote = result.twitchemote ---@type ChatEmotesLib-1.0_Emote
+			local emote = result.chatemote ---@type ChatEmotesLib-1.0_Emote
 			if emote then
 				button:SetText(format("%s %s", emote.markup, emote.name))
 			end
@@ -343,7 +416,7 @@ local function AutoComplete_UpdateResults(autoCompleteBox, results, context)
 	end
 end
 
----@param self EditBox
+---@param self ChatFrameEditBox
 ---@param userInput boolean
 local function ChatEditBoxOnTextChanged(self, userInput)
 	if not userInput then
@@ -355,7 +428,7 @@ local function ChatEditBoxOnTextChanged(self, userInput)
 	end
 	CacheOrigAutoCompletFuncs(self)
 	if not self.autoCompleteSource or self.autoCompleteSource == AutoCompleteSource then
-		_G.AutoCompleteEditBox_SetAutoCompleteSource(self, AutoCompleteSource, "twitchemote") ---@diagnostic disable-line
+		_G.AutoCompleteEditBox_SetAutoCompleteSource(self, AutoCompleteSource, "chatemote") ---@diagnostic disable-line
 		_G.AutoCompleteEditBox_SetCustomAutoCompleteFunction(self, AutoCompleteAccept) ---@diagnostic disable-line
 		_G.AutoComplete_Update(self, text, self:GetUTF8CursorPosition()) ---@diagnostic disable-line
 	end
@@ -371,7 +444,7 @@ local function ChatFrameOnHyperlinkClick(self, link, text, button)
 		return
 	end
 	if button == "RightButton" then
-		addon:ToggleFrame(emote)
+		addon:TogglePicker(emote)
 	else
 		ChatInsert(emote.name)
 	end
@@ -400,8 +473,15 @@ local function ChatFrameOnHyperlinkLeave(self, link, text)
 	GameTooltip:Hide()
 end
 
-local function CreateUI(frameName) end ---@return VladsChatEmotesUIMixin
-local function CreateButton(frameName) end ---@return VladsChatEmotesUIButton
+local function GetRandomEmote()
+	local emotes = CEL.GetEmotes()
+	local index = random(1, min(100, emotes[0]))
+	return emotes[index]
+end
+
+local function CreateUI(frameName) end ---@return ChatEmotesUIMixin
+local function CreateButton(frameName) end ---@return ChatEmotesUIButton
+local function CreateConfig(frameName) end ---@return ChatEmotesUIConfigMixin
 
 do
 
@@ -455,7 +535,7 @@ do
 
 	---@class WowScrollBoxList : ScrollBoxListViewMixin
 
-	---@class VladsChatEmotesUIScrollCollectionMixin : CallbackRegistryMixin
+	---@class ChatEmotesUIScrollCollectionMixin : CallbackRegistryMixin
 
 	local function SetScrollBoxButtonAlternateState(scrollBox)
 		local index = scrollBox:GetDataIndexBegin()
@@ -465,7 +545,7 @@ do
 		end)
 	end
 
-	---@type VladsChatEmotesUIScrollCollectionMixin
+	---@type ChatEmotesUIScrollCollectionMixin
 	local UIScrollCollectionMixin = CreateFromMixins(CallbackRegistryMixin)
 
 	UIScrollCollectionMixin:GenerateCallbackEvents({
@@ -492,16 +572,16 @@ do
 		self:TriggerEvent("OnSizeChanged", width, height)
 	end
 
-	---@class VladsChatEmotesUIEmoteButtonMixin : Button
+	---@class ChatEmotesUIScrollBoxEmoteButtonMixin : Button
 
-	---@type VladsChatEmotesUIEmoteButtonMixin
-	local UIEmoteButtonMixin = {}
+	---@type ChatEmotesUIScrollBoxEmoteButtonMixin
+	local UIScrollBoxEmoteButtonMixin = {}
 
-	local ButtonSize = 30
+	local ScrollBoxEmoteButtonSize = 30
 
-	function UIEmoteButtonMixin:OnLoad()
+	function UIScrollBoxEmoteButtonMixin:OnLoad()
 		-- self:SetHeight(ButtonSize)
-		self:SetSize(ButtonSize, ButtonSize) -- grid
+		self:SetSize(ScrollBoxEmoteButtonSize, ScrollBoxEmoteButtonSize) -- grid
 		-- self.RightLabel = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		-- self.RightLabel:SetJustifyH("RIGHT")
 		-- self.RightLabel:SetHeight(ButtonSize)
@@ -541,7 +621,7 @@ do
 	end
 
 	---@param emote ChatEmotesLib-1.0_Emote
-	function UIEmoteButtonMixin:Init(emote)
+	function UIScrollBoxEmoteButtonMixin:Init(emote)
 		-- self.LeftLabel:SetText(emote.name)
 		-- self.RightLabel:SetText(emote.markup)
 		self.emote = emote
@@ -549,7 +629,7 @@ do
 		self:Update()
 	end
 
-	function UIEmoteButtonMixin:OnEnter()
+	function UIScrollBoxEmoteButtonMixin:OnEnter()
 		self.MouseoverOverlay:Show()
 		local emote = self.emote
 		GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT", 0, 0)
@@ -560,12 +640,12 @@ do
 		GameTooltip:Show()
 	end
 
-	function UIEmoteButtonMixin:OnLeave()
+	function UIScrollBoxEmoteButtonMixin:OnLeave()
 		self.MouseoverOverlay:Hide()
 		GameTooltip:Hide()
 	end
 
-	function UIEmoteButtonMixin:OnClick(button)
+	function UIScrollBoxEmoteButtonMixin:OnClick(button)
 		local emote = self.emote
 		if button == "LeftButton" then
 			ChatInsert(emote.name)
@@ -574,11 +654,11 @@ do
 		end
 	end
 
-	function UIEmoteButtonMixin:SetAlternateOverlayShown(alternate)
+	function UIScrollBoxEmoteButtonMixin:SetAlternateOverlayShown(alternate)
 		self.Alternate:SetShown(alternate)
 	end
 
-	function UIEmoteButtonMixin:Update()
+	function UIScrollBoxEmoteButtonMixin:Update()
 		-- local emote = self.emote
 		-- if IsFavorite(emote) then
 		-- 	self.Background:SetColorTexture(0.2, 0.2, 0, 1)
@@ -589,10 +669,6 @@ do
 		-- end
 	end
 
-	local SearchDataProviderResultsFormat = "Results: %d"
-	local SearchMaxResults = 200
-	local LoadingEmotesNothing = "You have no emotes installed."
-
 	local MinPanelWidth = 380
 	local MinPanelHeight = 320
 	local MaxPanelWidth = MinPanelWidth * 1.8421
@@ -600,13 +676,12 @@ do
 	local DefaultPanelWidth = MinPanelWidth
 	local DefaultPanelHeight = MinPanelHeight
 	local isGridView = true
+	local SearchMaxResults = 200
 
-	---@class VladsChatEmotesUIButton : Button
-
-	---@class VladsChatEmotesUIMixin : Frame
+	---@class ChatEmotesUIMixin : Frame
 	---@field public Inset Frame
 
-	---@type VladsChatEmotesUIMixin
+	---@type ChatEmotesUIMixin
 	local UIMixin = {}
 
 	function UIMixin:OnLoad()
@@ -620,7 +695,7 @@ do
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self.ResizeButton:Init(self, MinPanelWidth, MinPanelHeight, MaxPanelWidth, MaxPanelHeight) ---@diagnostic disable-line: undefined-field
-		self.TitleText:SetText(PanelTitle) ---@diagnostic disable-line: undefined-field
+		self.TitleText:SetText(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
 		self.showingArguments = false
 		self.filterDataProvider = CreateDataProvider()
 		self.logDataProvider = CreateDataProvider()
@@ -629,6 +704,15 @@ do
 		self:InitializeLog()
 		self:HookScript("OnShow", self.OnShow)
 		self:HookScript("OnHide", self.OnHide)
+		self.ConfigButton:SetScript("OnClick", function() addon:ToggleConfig() end)
+		self.ConfigButton:SetScript("OnEnter", function()
+			GameTooltip:SetOwner(self.ConfigButton, "ANCHOR_RIGHT")
+			GameTooltip_SetTitle(GameTooltip, L.OPTIONS) ---@diagnostic disable-line: undefined-global
+			GameTooltip:Show()
+		end)
+		self.ConfigButton:SetScript("OnLeave", function()
+			GameTooltip:Hide()
+		end)
 	end
 
 	function UIMixin:OnShow()
@@ -658,7 +742,7 @@ do
 
 	function UIMixin:OnSearchDataProviderChanged(hasSortComparator)
 		local size = self.searchDataProvider:GetSize()
-		local text = SearchDataProviderResultsFormat:format(size)
+		local text = L.SEARCH_RESULTS:format(size)
 		self.Log.Bar.Label:SetText(text)
 	end
 
@@ -795,13 +879,13 @@ do
 			-- 	self.Log.Bar.SearchBox:SetText(text)
 			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
-			view:SetElementExtent(ButtonSize)
+			view:SetElementExtent(ScrollBoxEmoteButtonSize)
 			---@param factory function
 			---@param emote ChatEmotesLib-1.0_Emote
 			view:SetElementFactory(function(factory, emote)
-				local button, isNew = factory("Button") ---@type VladsChatEmotesUIEmoteButtonMixin
+				local button, isNew = factory("Button") ---@type ChatEmotesUIScrollBoxEmoteButtonMixin
 				if isNew then
-					Mixin(button, UIEmoteButtonMixin)
+					Mixin(button, UIScrollBoxEmoteButtonMixin)
 					button:OnLoad()
 					-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) AddEventToFilter(self.Filter.ScrollBox, emote) end)
 					-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInSearch(emote, emote.name) end)
@@ -812,8 +896,8 @@ do
 			local spacing = 2
 			view:SetPadding(pad, pad, pad, pad, spacing, spacing)
 			view:SetHorizontal(false)
-			view:SetStride(ButtonSize)
-			view:SetStrideExtent(ButtonSize)
+			view:SetStride(ScrollBoxEmoteButtonSize)
+			view:SetStrideExtent(ScrollBoxEmoteButtonSize)
 			ScrollUtil.InitScrollBoxWithScrollBar(self.Log.Events.ScrollBox, self.Log.Events.ScrollBar, view)
 			self.Log.Events.ScrollBox:SetDataProvider(self.logDataProvider)
 		end
@@ -835,13 +919,13 @@ do
 			-- 	end
 			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
-			view:SetElementExtent(ButtonSize)
+			view:SetElementExtent(ScrollBoxEmoteButtonSize)
 			---@param factory function
 			---@param emote ChatEmotesLib-1.0_Emote
 			view:SetElementFactory(function(factory, emote)
-				local button, isNew = factory("Button") ---@type VladsChatEmotesUIEmoteButtonMixin
+				local button, isNew = factory("Button") ---@type ChatEmotesUIScrollBoxEmoteButtonMixin
 				if isNew then
-					Mixin(button, UIEmoteButtonMixin)
+					Mixin(button, UIScrollBoxEmoteButtonMixin)
 					button:OnLoad()
 					-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) LocateInLog(emote) end)
 					-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInLog(emote) end)
@@ -852,8 +936,8 @@ do
 			local spacing = 2
 			view:SetPadding(pad, pad, pad, pad, spacing, spacing)
 			view:SetHorizontal(false)
-			view:SetStride(ButtonSize)
-			view:SetStrideExtent(ButtonSize)
+			view:SetStride(ScrollBoxEmoteButtonSize)
+			view:SetStrideExtent(ScrollBoxEmoteButtonSize)
 			ScrollUtil.InitScrollBoxWithScrollBar(self.Log.Search.ScrollBox, self.Log.Search.ScrollBar, view)
 			self.Log.Search.ScrollBox:SetDataProvider(self.searchDataProvider)
 		end
@@ -864,7 +948,7 @@ do
 	function UIMixin:SetEmotes(emotes, loadMax)
 		self.logDataProvider:Flush()
 		if not emotes then
-			self.StatusText:SetText(LoadingEmotesNothing)
+			self.StatusText:SetText(L.YOU_HAVE_NO_EMOTES_INSTALLED)
 			return
 		end
 		self.logDataProvider:InsertTableRange(emotes, 1, emotes[0])
@@ -886,7 +970,7 @@ do
 	end
 
 	function CreateUI(frameName)
-		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@type VladsChatEmotesUIMixin
+		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@type ChatEmotesUIMixin
 		Mixin(frame, UIMixin)
 		frame.TitleBar = CreateFrame("Frame", nil, frame, "PanelDragBarTemplate")
 		frame.TitleBar:SetHeight(32)
@@ -894,11 +978,17 @@ do
 		frame.TitleBar:SetPoint("TOPRIGHT")
 		frame.ResizeButton = CreateFrame("Button", nil, frame, "PanelResizeButtonTemplate")
 		frame.ResizeButton:SetPoint("BOTTOMRIGHT", -4, 4)
+		frame.ConfigButton = CreateFrame("Button", nil, frame)
+		frame.ConfigButton:SetSize(16, 16)
+		frame.ConfigButton:SetPoint("BOTTOMLEFT", 6, 6)
+		frame.ConfigButton.Texture = frame.ConfigButton:CreateTexture(nil, "ARTWORK")
+		frame.ConfigButton.Texture:SetAllPoints()
+		frame.ConfigButton.Texture:SetTexture(851903)
 		frame.StatusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		frame.StatusText:SetJustifyH("LEFT")
-		frame.StatusText:SetHeight(30)
-		frame.StatusText:SetPoint("BOTTOMLEFT", 10, 0)
-		frame.StatusText:SetPoint("BOTTOMRIGHT", frame.ResizeButton, "BOTTOMLEFT", 0, 0)
+		frame.StatusText:SetHeight(18)
+		frame.StatusText:SetPoint("BOTTOMLEFT", frame.ConfigButton, "BOTTOMRIGHT", 2, 0)
+		frame.StatusText:SetPoint("BOTTOMRIGHT", frame.ResizeButton, "BOTTOMLEFT", -2, 0)
 		frame.Log = CreateFrame("Frame", nil, frame)
 		frame.Log:SetPoint("TOPLEFT", frame.TitleBar, "BOTTOMLEFT", 8, 4) -- -32
 		frame.Log:SetPoint("BOTTOMRIGHT", -9, 28)
@@ -926,7 +1016,7 @@ do
 		frame.Log.Events.ScrollBox.Background = frame.Log.Events.ScrollBox:CreateTexture(nil, "BACKGROUND")
 		frame.Log.Events.ScrollBox.Background:SetAllPoints()
 		frame.Log.Events.ScrollBox.Background:SetColorTexture(0.03, 0.03, 0.03, 1)
-		frame.Log.Events.ScrollBar = CreateFrame("Frame", nil, frame.Log.Events, "WowTrimScrollBar") ---@type VladsChatEmotesUIScrollCollectionMixin
+		frame.Log.Events.ScrollBar = CreateFrame("Frame", nil, frame.Log.Events, "WowTrimScrollBar") ---@type ChatEmotesUIScrollCollectionMixin
 		frame.Log.Events.ScrollBar:SetPoint("TOPLEFT", frame.Log.Events.ScrollBox, "TOPRIGHT", 0, -3)
 		frame.Log.Events.ScrollBar:SetPoint("BOTTOMLEFT", frame.Log.Events.ScrollBox, "BOTTOMRIGHT", 0, 0)
 		Mixin(frame.Log.Events.ScrollBar, UIScrollCollectionMixin)
@@ -940,7 +1030,7 @@ do
 		frame.Log.Search.ScrollBox.Background = frame.Log.Search.ScrollBox:CreateTexture(nil, "BACKGROUND")
 		frame.Log.Search.ScrollBox.Background:SetAllPoints()
 		frame.Log.Search.ScrollBox.Background:SetColorTexture(0.03, 0.03, 0.03, 1)
-		frame.Log.Search.ScrollBar = CreateFrame("Frame", nil, frame.Log.Search, "WowTrimScrollBar") ---@type VladsChatEmotesUIScrollCollectionMixin
+		frame.Log.Search.ScrollBar = CreateFrame("Frame", nil, frame.Log.Search, "WowTrimScrollBar") ---@type ChatEmotesUIScrollCollectionMixin
 		frame.Log.Search.ScrollBar:SetPoint("TOPLEFT", frame.Log.Search.ScrollBox, "TOPRIGHT", 0, -3)
 		frame.Log.Search.ScrollBar:SetPoint("BOTTOMLEFT", frame.Log.Search.ScrollBox, "BOTTOMRIGHT", 0, 0)
 		Mixin(frame.Log.Search.ScrollBar, UIScrollCollectionMixin)
@@ -950,8 +1040,10 @@ do
 		return frame
 	end
 
+	---@class ChatEmotesUIButton : Button
+
 	function CreateButton(frameName)
-		local button = CreateFrame("Button", frameName, UIParent) ---@type VladsChatEmotesUIButton
+		local button = CreateFrame("Button", frameName, UIParent) ---@type ChatEmotesUIButton
 		button:SetFrameStrata("LOW")
 		button:SetSize(32, 32)
 		---@diagnostic disable-next-line: undefined-global
@@ -970,36 +1062,138 @@ do
 			if not emotes or not emotes[1] then
 				text = "|T134400:0:0|t"
 			else
-				local index = random(1, min(100, emotes[0]))
-				local emote = emotes[index]
+				local emote = GetRandomEmote()
 				text = emote.markup
 			end
 			button.Text:SetText(text)
 		end
 		button:SetScript("OnClick", function()
 			PlaySound(SOUNDKIT.IG_CHAT_EMOTE_BUTTON) ---@diagnostic disable-line: undefined-global
-			addon:ToggleFrame()
+			addon:TogglePicker()
 			button:UpdateTexture()
 		end)
 		button:SetScript("OnEnable", function() button.Text:Show() end)
 		button:SetScript("OnDisable", function() button.Text:Hide() end)
 		button:SetScript("OnEnter", function()
 			GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-			GameTooltip_SetTitle(GameTooltip, PanelTitle) ---@diagnostic disable-line: undefined-global
+			GameTooltip_SetTitle(GameTooltip, L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-global
 			GameTooltip:Show()
 		end)
 		button:SetScript("OnLeave", function()
 			GameTooltip:Hide()
 		end)
 		button:UpdateTexture()
+		C_Timer.After(3, button.UpdateTexture)
 		return button
+	end
+
+	---@class ChatEmotesUIConfigMixin : Frame
+	---@field public Inset Frame
+
+	---@type ChatEmotesUIConfigMixin
+	local UIConfigMixin = {}
+
+	function UIConfigMixin:OnLoad()
+		self:SetToplevel(true)
+		self:SetMovable(true)
+		self:EnableMouse(true)
+		self:SetClampedToScreen(true)
+		self:SetSize(DefaultPanelWidth, DefaultPanelHeight)
+		self:SetPoint("CENTER")
+		ButtonFrameTemplate_HidePortrait(self) ---@diagnostic disable-line: undefined-global
+		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
+		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
+		self.TitleText:SetText(L.CHAT_EMOTES_OPTIONS) ---@diagnostic disable-line: undefined-field
+	end
+
+	function CreateConfig(frameName)
+		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@type ChatEmotesUIConfigMixin
+		Mixin(frame, UIConfigMixin)
+		frame.TitleBar = CreateFrame("Frame", nil, frame, "PanelDragBarTemplate")
+		frame.TitleBar:SetHeight(32)
+		frame.TitleBar:SetPoint("TOPLEFT")
+		frame.TitleBar:SetPoint("TOPRIGHT")
+		do
+			frame.HeightScale = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+			frame.HeightScale:SetSize(48, 32)
+			frame.HeightScale:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -20)
+			frame.HeightScale:SetAutoFocus(false)
+			frame.HeightScale:SetNumeric(true)
+			frame.HeightScale:SetNumber(100)
+			frame.HeightScale:SetMaxLetters(3)
+			frame.HeightScale:HookScript("OnShow", function(self)
+				self.value = floor(DB.options.emoteScale * 100 + 0.5)
+				self:SetNumber(self.value)
+			end)
+			frame.HeightScale:HookScript("OnEditFocusLost", function(self)
+				local value = self.value
+				if not value then
+					value = 100
+				elseif value < 0 then
+					value = 0
+				elseif value > 1000 then
+					value = 1000
+				end
+				DB.options.emoteScale = value / 100
+				self:SetNumber(value)
+			end)
+			frame.HeightScale:HookScript("OnEnterPressed", function(self)
+				self.value = self:GetNumber()
+				self:ClearFocus()
+			end)
+			frame.HeightScale:HookScript("OnEscapePressed", function(self)
+				self:ClearFocus()
+			end)
+			frame.HeightScale:HookScript("OnTextChanged", function(self)
+				self:Update()
+			end)
+			frame.HeightScale:HookScript("OnArrowPressed", function(self)
+				self:Update(true)
+			end)
+			frame.HeightScale.Preview = frame.HeightScale:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			frame.HeightScale.Preview:SetNonSpaceWrap(false)
+			frame.HeightScale.Preview:SetWordWrap(false) ---@diagnostic disable-line: redundant-parameter
+			frame.HeightScale.Preview:SetSize(256, 256)
+			frame.HeightScale.Preview:SetPoint("TOPLEFT", frame.HeightScale, "BOTTOMLEFT", 0, 0)
+			frame.HeightScale.Preview:SetJustifyH("LEFT")
+			frame.HeightScale.Preview:SetJustifyV("TOP")
+			function frame.HeightScale:RandomEmote()
+				local emote = GetRandomEmote()
+				self.emote = emote
+				return emote
+			end
+			---@param scale? number|nil
+			function frame.HeightScale:UpdateEmote(scale)
+				if not scale then
+					scale = self:GetNumber() / 100
+				end
+				local emote = self.emote
+				local height = GetHeightForChatFrame(DEFAULT_CHAT_FRAME, scale, 3) ---@diagnostic disable-line: undefined-global
+				local text = CEL.SafeReplace(emote.name, emote.name, emote, false, height)
+				self.Preview:SetText(text)
+			end
+			---@param newEmote boolean
+			function frame.HeightScale:Update(newEmote)
+				if newEmote or not self.emote then
+					self:RandomEmote()
+				end
+				self:UpdateEmote()
+			end
+		end
+		frame:OnLoad()
+		frame:Hide()
+		return frame
 	end
 
 end
 
 local function CreateSlashCommand()
 	local function CommandHandler(text, editBox)
-		addon:ToggleFrame()
+		if text and (text:find("[Cc][Oo][Nn][Ff][Ii][Gg]") or text:find("[Oo][Pp][Tt][Ii][Oo][Nn][Ss]?")) then
+			addon:ToggleConfig()
+		else
+			addon:TogglePicker()
+		end
 	end
 	---@diagnostic disable-next-line: undefined-field
 	_G.SlashCmdList[addonName] = CommandHandler
@@ -1027,14 +1221,22 @@ local function UpdateChannelsReduntant()
 	C_Timer.After(3, UpdateChannels)
 end
 
-local function Init()
+local function InitDB()
 	ChatEmotesDB = type(ChatEmotesDB) == "table" and ChatEmotesDB or {}
 	DB = setmetatable(ChatEmotesDB, { __index = defaults })
 	for k, v in pairs(defaults) do
-		if type(rawget(DB, k)) ~= "table" then
-			DB[k] = v
+		if type(v) == "table" then
+			local t = rawget(DB, k)
+			if type(t) ~= "table" then
+				t = {}
+				DB[k] = t
+			end
+			setmetatable(t, { __index = v })
 		end
 	end
+end
+
+local function Init()
 	UpdateChannelsReduntant()
 	for _, event in ipairs(supportedChatEvents) do
 		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
@@ -1042,8 +1244,7 @@ local function Init()
 	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
 		local chatFrame = _G["ChatFrame" .. i] ---@type ChatFrame
 		if chatFrame then
-			-----@diagnostic disable-next-line: undefined-field
-			local editBox = chatFrame.editBox ---@type EditBox
+			local editBox = chatFrame.editBox
 			editBox:HookScript("OnTextChanged", ChatEditBoxOnTextChanged)
 			chatFrame:HookScript("OnHyperlinkClick", ChatFrameOnHyperlinkClick)
 			chatFrame:HookScript("OnHyperlinkEnter", ChatFrameOnHyperlinkEnter)
@@ -1055,7 +1256,6 @@ local function Init()
 	hooksecurefunc("AutoComplete_UpdateResults", AutoComplete_UpdateResults)
 	CreateSlashCommand()
 	addonButton = CreateButton("VladsChatEmotesButton")
-	C_Timer.After(1, addonButton.UpdateTexture)
 end
 
 addon:SetScript("OnEvent", function(self, event, ...) self[event](self, event, ...) end)
@@ -1085,11 +1285,12 @@ function addon:ADDON_LOADED(event, name)
 		return
 	end
 	addon:UnregisterEvent(event)
+	InitDB()
 	Init()
 	InitChannelMonitor()
 end
 
-function addon:ToggleFrame(showEmote)
+function addon:TogglePicker(showEmote)
 	if not addonFrame then
 		addonFrame = CreateUI("VladsChatEmotesFrame")
 		table.insert(UISpecialFrames, addonFrame:GetName()) ---@diagnostic disable-line: undefined-global
@@ -1100,4 +1301,12 @@ function addon:ToggleFrame(showEmote)
 	else
 		addonFrame:SetShown(not addonFrame:IsShown())
 	end
+end
+
+function addon:ToggleConfig()
+	if not addonConfigFrame then
+		addonConfigFrame = CreateConfig("VladsChatEmotesConfigFrame")
+		table.insert(UISpecialFrames, addonConfigFrame:GetName()) ---@diagnostic disable-line: undefined-global
+	end
+	addonConfigFrame:SetShown(not addonConfigFrame:IsShown())
 end

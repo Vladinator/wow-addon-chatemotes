@@ -31,8 +31,8 @@ assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 ---@field public weights table<ChatEmotesLib-1.0_Emote, boolean|number>
 
 local MAJOR, MINOR = "ChatEmotesLib-1.0", 1
-local EL, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@type ChatEmotesLib-1.0
-if not EL then return end
+local CEL, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@type ChatEmotesLib-1.0
+if not CEL then return end
 
 local assert = assert
 local format = format
@@ -42,33 +42,33 @@ local type = type
 local strcmputf8i = strcmputf8i
 
 ---@type table<string, ChatEmotesLib-1.0_Emote[]>
-EL.packages = EL.packages or {}
+CEL.packages = CEL.packages or {}
 
 ---@type string[]
-EL.packageNames = EL.packageNames or { [0] = 0 }
+CEL.packageNames = CEL.packageNames or { [0] = 0 }
 
 ---@type ChatEmotesLib-1.0_Emote[]
-EL.emotes = EL.emotes or { [0] = 0 }
+CEL.emotes = CEL.emotes or { [0] = 0 }
 
-EL.emoteWrapper = EL.emoteWrapper or "#"
+CEL.emoteWrapper = CEL.emoteWrapper or "#"
 
 ---@type string[]
-EL.emotePatterns = EL.emotePatterns or {
+CEL.emotePatterns = CEL.emotePatterns or {
 	[0] = 1,
-	"(%" .. EL.emoteWrapper .. "%s*([^#%s]+)%s*%" .. EL.emoteWrapper .. ")",
+	"(%" .. CEL.emoteWrapper .. "%s*([^#%s]+)%s*%" .. CEL.emoteWrapper .. ")",
 }
 
 ---@type string[]
-EL.emotePatternsAggressive = EL.emotePatternsAggressive or {
+CEL.emotePatternsAggressive = CEL.emotePatternsAggressive or {
 	[0] = 4,
-	"((%" .. EL.emoteWrapper .. "%:[%w_]+%:%" .. EL.emoteWrapper .. "))",
-	"((%" .. EL.emoteWrapper .. "[%w_]+%" .. EL.emoteWrapper .. "))",
+	"((%" .. CEL.emoteWrapper .. "%:[%w_]+%:%" .. CEL.emoteWrapper .. "))",
+	"((%" .. CEL.emoteWrapper .. "[%w_]+%" .. CEL.emoteWrapper .. "))",
 	"((%:[%w_]+%:))",
 	"(([%w_]+))",
 }
 
 ---@type table<string, function>
-EL.filter = {
+CEL.filter = {
 	---@param emote ChatEmotesLib-1.0_Emote
 	---@param name string
 	sameName = function(emote, name)
@@ -133,20 +133,20 @@ EL.filter = {
 	---@param emote ChatEmotesLib-1.0_Emote
 	---@param name string
 	nameFindTextStartsWith = function(emote, name)
-		local startIndex = EL.filter.nameFindText(emote, name)
+		local startIndex = CEL.filter.nameFindText(emote, name)
 		return startIndex and (startIndex == 1 or startIndex == -1)
 	end,
 	---@param emote ChatEmotesLib-1.0_Emote
 	---@param name string
 	nameFindTextStartsWithCaseless = function(emote, name)
-		local startIndex = EL.filter.nameFindTextCaseless(emote, name)
+		local startIndex = CEL.filter.nameFindTextCaseless(emote, name)
 		return startIndex and (startIndex == 1 or startIndex == -1)
 	end,
 }
 
-EL.emoteLinkUnique = EL.emoteLinkUnique or "twitchemote"
-EL.emoteLinkFormat = EL.emoteLinkFormat or "|Hgarrmission:%s:%s|h%s|h"
-EL.emoteLinkPattern = EL.emoteLinkPattern or "|Hgarrmission:([^:]+):([^|]+)|h([^|]+)|h"
+CEL.emoteLinkUnique = CEL.emoteLinkUnique or "chatemoteslib"
+CEL.emoteLinkFormat = CEL.emoteLinkFormat or "|Hgarrmission:%s:%s|h%s|h"
+CEL.emoteLinkPattern = CEL.emoteLinkPattern or "|Hgarrmission:([^:]+):([^|]+)|h([^|]+)|h"
 
 ---@param text string
 local function SafePattern(text)
@@ -305,7 +305,7 @@ do
 
 end
 
-EL.emoteMetatable = EL.emoteMetatable or {
+CEL.emoteMetatable = CEL.emoteMetatable or {
 	__index = function(self, key)
 		if key == "markup" then
 			local file = self.file
@@ -331,13 +331,13 @@ EL.emoteMetatable = EL.emoteMetatable or {
 }
 
 ---@type table<function, table<string, ChatEmotesLib-1.0_SearchCache>>
-EL.emoteSearchCache = EL.emoteSearchCache or {}
+CEL.emoteSearchCache = CEL.emoteSearchCache or {}
 
 ---@param customFilter function
 ---@param name string
 ---@return ChatEmotesLib-1.0_SearchCache|nil
 local function GetSearchFromCache(customFilter, name)
-	local cache = EL.emoteSearchCache[customFilter]
+	local cache = CEL.emoteSearchCache[customFilter]
 	if not cache then
 		return
 	end
@@ -349,18 +349,24 @@ end
 ---@param emotes ChatEmotesLib-1.0_Emote[]
 ---@param weights table<ChatEmotesLib-1.0_Emote, boolean|number>
 local function SetSearchCache(customFilter, name, emotes, weights)
-	local cache = EL.emoteSearchCache[customFilter]
+	local cache = CEL.emoteSearchCache[customFilter]
 	if not cache then
 		cache = {}
-		EL.emoteSearchCache[customFilter] = cache
+		CEL.emoteSearchCache[customFilter] = cache
 	end
 	local nameCache = cache[name]
 	if not nameCache then
-		nameCache = {}
+		if emotes then
+			nameCache = {}
+		else
+			nameCache = false
+		end
 		cache[name] = nameCache
 	end
-	nameCache.emotes = emotes
-	nameCache.weights = weights
+	if nameCache then
+		nameCache.emotes = emotes
+		nameCache.weights = weights
+	end
 	return nameCache
 end
 
@@ -421,7 +427,7 @@ local function ProcessEmote(package, path, folder, file)
 		offsetR = offsetR,
 		offsetT = offsetT,
 		offsetB = offsetB,
-	}, EL.emoteMetatable)
+	}, CEL.emoteMetatable)
 end
 
 ---@param package string
@@ -429,7 +435,7 @@ end
 ---@param emotes table<string, table<number, any>>
 ---@return ChatEmotesLib-1.0_Emote[]
 local function ProcessPackageEmotes(package, path, emotes)
-	local allEmotes = EL.emotes
+	local allEmotes = CEL.emotes
 	local icons
 	for folder, files in pairs(emotes) do
 		if type(files) == "table" then
@@ -451,42 +457,45 @@ local function ProcessPackageEmotes(package, path, emotes)
 end
 
 ---@param package ChatEmotesLib-1.0_PackageStruct
-function EL.RegisterPackage(package)
+function CEL.RegisterPackage(package)
 	assert(type(package.name) == "string", "Package name required.")
 	assert(type(package.path) == "string", "Package path required.")
 	assert(type(package.emotes) == "table", "Package emotes table required.")
-	assert(EL.packages[package.name] == nil, "Package already exists.")
+	assert(CEL.packages[package.name] == nil, "Package already exists.")
 	local icons = ProcessPackageEmotes(package.name, package.path, package.emotes)
 	assert(icons ~= nil, "Package emotes table is malformed or empty.")
-	EL.packages[package.name] = icons
-	EL.packageNames[0] = EL.packageNames[0] + 1
-	EL.packageNames[EL.packageNames[0]] = package.name
+	CEL.packages[package.name] = icons
+	CEL.packageNames[0] = CEL.packageNames[0] + 1
+	CEL.packageNames[CEL.packageNames[0]] = package.name
 	return icons
 end
 
-function EL.GetPackages()
-	return EL.packages
+function CEL.GetPackages()
+	return CEL.packages
 end
 
-function EL.GetPackageNames()
-	return EL.packageNames
+function CEL.GetPackageNames()
+	return CEL.packageNames
 end
 
-function EL.GetEmotes()
-	return EL.emotes
+function CEL.GetEmotes()
+	return CEL.emotes
 end
 
 ---@param name string
 ---@param customFilter? function
-function EL.GetEmotesSearch(name, customFilter)
-	customFilter = customFilter or EL.filter.nameFindTextStartsWithCaseless
+function CEL.GetEmotesSearch(name, customFilter)
+	customFilter = customFilter or CEL.filter.nameFindTextStartsWithCaseless
 	local cache = GetSearchFromCache(customFilter, name)
-	if cache then
-		return cache.emotes, cache.weights, true
+	if cache ~= nil then
+		if cache then
+			return cache.emotes, cache.weights, true
+		end
+		return nil, nil, true
 	end
 	local emotes, weights
-	for i = 1, EL.emotes[0] do
-		local emote = EL.emotes[i]
+	for i = 1, CEL.emotes[0] do
+		local emote = CEL.emotes[i]
 		local result = customFilter(emote, name)
 		if result then
 			if not emotes then
@@ -505,21 +514,21 @@ end
 ---@param name string
 ---@param customFilter? function
 ---@return ChatEmotesLib-1.0_Emote
-function EL.GetEmoteSearch(name, customFilter)
-	customFilter = customFilter or EL.filter.nameFindTextStartsWithCaseless
-	local emotes, weights, cached = EL.GetEmotesSearch(name, customFilter)
+function CEL.GetEmoteSearch(name, customFilter)
+	customFilter = customFilter or CEL.filter.nameFindTextStartsWithCaseless
+	local emotes, weights, cached = CEL.GetEmotesSearch(name, customFilter)
 	if not emotes then
 		return
 	end
 	if emotes[2] and not cached then
-		EL.SortEmotes(emotes, weights)
+		CEL.SortEmotes(emotes, weights)
 	end
 	return emotes[1]
 end
 
 ---@param emotes ChatEmotesLib-1.0_Emote[]
 ---@param weights table<ChatEmotesLib-1.0_Emote, boolean|number>
-function EL.SortEmotes(emotes, weights)
+function CEL.SortEmotes(emotes, weights)
 	---@param a ChatEmotesLib-1.0_Emote
 	---@param b ChatEmotesLib-1.0_Emote
 	table.sort(emotes, function(a, b)
@@ -541,19 +550,19 @@ function EL.SortEmotes(emotes, weights)
 end
 
 ---@param text string
-function EL.TextToPattern(text)
+function CEL.TextToPattern(text)
 	return SafePattern(text)
 end
 
 ---@param text string
-function EL.SplitText(text)
+function CEL.SplitText(text)
 	return SafeSplit(text)
 end
 
 ---@param text string
 ---@param pattern string
 ---@param replacement string
-function EL.ReplaceText(text, pattern, replacement)
+function CEL.ReplaceText(text, pattern, replacement)
 	return SafeReplace(text, pattern, replacement)
 end
 
@@ -561,21 +570,21 @@ end
 ---@param height? number
 ---@return string|nil
 local function ReplaceEmotesInText(text, height)
-	for i = 1, EL.emotePatterns[0] do
-		local emotePattern = EL.emotePatterns[i]
+	for i = 1, CEL.emotePatterns[0] do
+		local emotePattern = CEL.emotePatterns[i]
 		for raw, emoteName in text:gmatch(emotePattern) do
-			local emote = EL.GetEmoteSearch(emoteName, EL.filter.sameNameCaseless)
+			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless)
 			if emote then
-				return EL.SafeReplace(text, raw, emote, true, height), emote
+				return CEL.SafeReplace(text, raw, emote, true, height), emote
 			end
 		end
 	end
-	for i = 1, EL.emotePatternsAggressive[0] do
-		local emotePattern = EL.emotePatternsAggressive[i]
+	for i = 1, CEL.emotePatternsAggressive[0] do
+		local emotePattern = CEL.emotePatternsAggressive[i]
 		for raw, emoteName in text:gmatch(emotePattern) do
-			local emote = EL.GetEmoteSearch(emoteName, EL.filter.sameName)
+			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameName)
 			if emote then
-				return EL.SafeReplace(text, raw, emote, true, height), emote
+				return CEL.SafeReplace(text, raw, emote, true, height), emote
 			end
 		end
 	end
@@ -585,7 +594,7 @@ end
 ---@param height? number
 ---@param usedEmotes? boolean
 ---@return string|nil, ChatEmotesLib-1.0_Emote[]
-function EL.ReplaceEmotesInText(text, height, usedEmotes)
+function CEL.ReplaceEmotesInText(text, height, usedEmotes)
 	local segments = SafeSplit(text)
 	local length = segments.length
 	if length == 0 then
@@ -622,26 +631,25 @@ end
 ---@param text string
 ---@param raw string
 ---@param emote ChatEmotesLib-1.0_Emote
-function EL.SafeReplace(text, raw, emote, links, height)
-	local pattern = EL.TextToPattern(raw)
+function CEL.SafeReplace(text, raw, emote, links, height)
+	local pattern = CEL.TextToPattern(raw)
 	local markup = emote.markup
-	local ratio = emote.ratio or 1
-	if height and ratio ~= 1 then
-		markup = markup:gsub(":0:0", format(":%d:%d", height, height * ratio), 1)
+	if height then
+		markup = markup:gsub(":0:0", format(":%d:%d", height, height * (emote.ratio or 1)), 1)
 	end
-	return SafeReplace(text, pattern, links and format(EL.emoteLinkFormat, EL.emoteLinkUnique, emote.name, markup) or markup)
+	return SafeReplace(text, pattern, links and format(CEL.emoteLinkFormat, CEL.emoteLinkUnique, emote.name, markup) or markup)
 end
 
 ---@param link string
-function EL.GetEmoteFromLink(link)
+function CEL.GetEmoteFromLink(link)
 	if type(link) ~= "string" then
 		return
 	end
 	local linkType, arg1, arg2 = strsplit(":", link, 3)
-	if linkType ~= "garrmission" or arg1 ~= EL.emoteLinkUnique then
+	if linkType ~= "garrmission" or arg1 ~= CEL.emoteLinkUnique then
 		return
 	end
-	return EL.GetEmoteSearch(arg2, EL.filter.sameName), arg2
+	return CEL.GetEmoteSearch(arg2, CEL.filter.sameName), arg2
 end
 
 --[=[
