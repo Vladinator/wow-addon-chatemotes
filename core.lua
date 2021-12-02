@@ -136,10 +136,10 @@ local function LogEmoteStatistics(emotes, guid)
 			emoteStats.sent = (emoteStats.sent or 0) + 1
 		else
 			emoteStats.received = (emoteStats.received or 0) + 1
-			if not emoteStats.receivedFrom then
-				emoteStats.receivedFrom = {}
-			end
-			emoteStats.receivedFrom[guid] = (emoteStats.receivedFrom[guid] or 0) + 1
+			-- if not emoteStats.receivedFrom then
+			-- 	emoteStats.receivedFrom = {}
+			-- end
+			-- emoteStats.receivedFrom[guid] = (emoteStats.receivedFrom[guid] or 0) + 1
 		end
 	end
 end
