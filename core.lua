@@ -13,6 +13,8 @@ local strlenutf8 = _G.strlenutf8
 ---@field public SEARCH_RESULTS string
 ---@field public CHAT_EMOTES_OPTIONS string
 ---@field public OPTIONS string
+---@field public EMOTE_SCALE string
+---@field public EMOTE_HOVER string
 
 ---@class ChatEmotesNamespace
 ---@field public NewLocale function
@@ -28,12 +30,15 @@ local addonFrame ---@type ChatEmotesUIMixin
 local addonButton ---@type ChatEmotesUIButton
 local addonConfigFrame ---@type ChatEmotesUIConfigMixin
 
+local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 134400, 0, 0, 0, 0, 32, 32, 2, 30, 2, 30)
+
 ---@class ChatEmoteStatistics
 ---@field public sent? number|nil
 ---@field public received? number|nil
 
 ---@class ChatEmotesDB_Options
 ---@field public emoteScale number
+---@field public emoteHover boolean
 
 ---@class ChatEmotesDB_Position
 ---@field public point string
@@ -54,6 +59,7 @@ local DB ---@type ChatEmotesDB
 local defaults = {
 	options = {
 		emoteScale = 1.25,
+		emoteHover = true,
 	},
 	position = {
 		point = "LEFT",
@@ -231,7 +237,7 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 		return
 	end
 	local height = GetHeightForChatFrame(self)
-	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, true)
+	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, DB.options.emoteHover, true)
 	if newText then
 		if prevLineID ~= lineID then
 			prevLineID = lineID
@@ -439,6 +445,9 @@ end
 ---@param text string
 ---@param button string
 local function ChatFrameOnHyperlinkClick(self, link, text, button)
+	if not DB.options.emoteHover then
+		return
+	end
 	local emote = CEL.GetEmoteFromLink(link)
 	if not emote then
 		return
@@ -454,6 +463,9 @@ end
 ---@param link string
 ---@param text string
 local function ChatFrameOnHyperlinkEnter(self, link, text)
+	if not DB.options.emoteHover then
+		return
+	end
 	local emote = CEL.GetEmoteFromLink(link)
 	if not emote then
 		return
@@ -470,12 +482,15 @@ end
 ---@param link string
 ---@param text string
 local function ChatFrameOnHyperlinkLeave(self, link, text)
+	if not DB.options.emoteHover then
+		return
+	end
 	GameTooltip:Hide()
 end
 
 local function GetRandomEmote()
 	local emotes = CEL.GetEmotes()
-	local index = random(1, min(100, emotes[0]))
+	local index = random(1, min(100, max(1, emotes[0])))
 	return emotes[index]
 end
 
@@ -704,7 +719,10 @@ do
 		self:InitializeLog()
 		self:HookScript("OnShow", self.OnShow)
 		self:HookScript("OnHide", self.OnHide)
-		self.ConfigButton:SetScript("OnClick", function() addon:ToggleConfig() end)
+		self.ConfigButton:SetScript("OnClick", function()
+			PlaySound(SOUNDKIT.IG_CHAT_EMOTE_BUTTON) ---@diagnostic disable-line: undefined-global
+			addon:ToggleConfig()
+		end)
 		self.ConfigButton:SetScript("OnEnter", function()
 			GameTooltip:SetOwner(self.ConfigButton, "ANCHOR_RIGHT")
 			GameTooltip_SetTitle(GameTooltip, L.OPTIONS) ---@diagnostic disable-line: undefined-global
@@ -1060,7 +1078,7 @@ do
 			local emotes = CEL.GetEmotes()
 			local text
 			if not emotes or not emotes[1] then
-				text = "|T134400:0:0|t"
+				text = NO_EMOTE_MARKUP_FALLBACK
 			else
 				local emote = GetRandomEmote()
 				text = emote.markup
@@ -1083,7 +1101,7 @@ do
 			GameTooltip:Hide()
 		end)
 		button:UpdateTexture()
-		C_Timer.After(3, button.UpdateTexture)
+		C_Timer.After(1, button.UpdateTexture)
 		return button
 	end
 
@@ -1104,6 +1122,188 @@ do
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self.TitleText:SetText(L.CHAT_EMOTES_OPTIONS) ---@diagnostic disable-line: undefined-field
+		self:UpdateScrollFrame()
+	end
+
+	function UIConfigMixin:UpdateScrollFrame()
+		local totalHeight = 0
+		for _, widget in ipairs(self.Options) do
+			totalHeight = totalHeight + widget:GetHeight()
+		end
+		local numToDisplay = 8
+		local fakeItemHeight = 32
+		local numItems = floor(totalHeight / fakeItemHeight + 0.5)
+		local scrollFrame = self.ScrollFrame
+		FauxScrollFrame_Update(scrollFrame, numItems, numToDisplay, fakeItemHeight, nil, nil, nil, nil, nil, nil, true) ---@diagnostic disable-line: undefined-global
+		if numItems > numToDisplay then
+			scrollFrame.ScrollBarTop:Show()
+			scrollFrame.ScrollBarBottom:Show()
+			scrollFrame.ScrollBarMiddle:Show()
+			scrollFrame.ScrollBar:Show()
+		else
+			scrollFrame.ScrollBarTop:Hide()
+			scrollFrame.ScrollBarBottom:Hide()
+			scrollFrame.ScrollBarMiddle:Hide()
+			scrollFrame.ScrollBar:Hide()
+			scrollFrame.ScrollBar:SetValue(0)
+		end
+	end
+
+	local InputFactory = {}
+
+	do
+
+		local function EditBox_OnEditFocusLost(self)
+			local cvar = self.cvar
+			if cvar.type ~= "number" then
+				return
+			end
+			local key = cvar.key
+			local options = DB.options
+			local value = self.value
+			if not value or value < 1 then
+				local ovalue = defaults.options[key]
+				value = floor(ovalue * 100 + 0.5)
+			elseif value > 999 then
+				value = 999
+			end
+			if cvar.percentile then
+				options[key] = value / 100
+			else
+				options[key] = value
+			end
+			self:SetNumber(value)
+		end
+
+		local function EditBox_OnEnterPressed(self)
+			local cvar = self.cvar
+			if cvar.type == "number" then
+				self.value = self:GetNumber()
+			else
+				self.value = self:GetText()
+			end
+			self:ClearFocus()
+		end
+
+		local function EditBox_OnTextChanged(self)
+			if not self.Update then
+				return
+			end
+			self:Update()
+		end
+
+		local function EditBox_OnShow(self)
+			local cvar = self.cvar
+			local options = DB.options
+			if cvar.type == "number" then
+				if cvar.percentile then
+					self.value = floor(options[cvar.key] * 100 + 0.5)
+				else
+					self.value = options[cvar.key]
+				end
+				self:SetNumber(self.value)
+			else
+				self.value = options[cvar.key]
+				self:SetText(self.value)
+			end
+		end
+
+		local function EditBox_OnArrowPressed(self)
+			if not self.Update then
+				return
+			end
+			self:Update(true)
+		end
+
+		local function CheckButton_OnShow(self)
+			self:SetChecked(DB.options[self.cvar.key])
+		end
+
+		local function CheckButton_OnClick(self, button, down)
+			DB.options[self.cvar.key] = not not self:GetChecked()
+		end
+
+		function InputFactory:FinalizeOption(frame, widget, offsetX, offsetY)
+			if widget.finalized then
+				return widget
+			end
+			widget.finalized = true
+			if widget.cvar then
+				local widgetType = widget:GetObjectType()
+				if widgetType == "EditBox" then
+					widget:HookScript("OnEditFocusLost", EditBox_OnEditFocusLost)
+					widget:SetScript("OnEnterPressed", EditBox_OnEnterPressed) -- override default
+					widget:HookScript("OnTextChanged", EditBox_OnTextChanged)
+					widget:HookScript("OnShow", EditBox_OnShow)
+					widget:HookScript("OnArrowPressed", EditBox_OnArrowPressed)
+				elseif widgetType == "CheckButton" then
+					widget:HookScript("OnShow", CheckButton_OnShow)
+					widget:HookScript("OnClick", CheckButton_OnClick)
+				end
+			end
+			local index = #frame.Options
+			local prevOption = frame.Options[index]
+			if prevOption then
+				widget:SetPoint("TOPLEFT", prevOption, "BOTTOMLEFT", offsetX or 0, offsetY or 0)
+			else
+				widget:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, 0)
+			end
+			frame.Options[index + 1] = widget
+			return widget
+		end
+
+	end
+
+	local function CreateLabel(frame, widget, label, offsetX, offsetY)
+		widget.Label = widget:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		widget.Label:SetPoint("LEFT", widget, "RIGHT", 4 + (offsetX or 0), offsetY or 0)
+		widget.Label:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
+		widget.Label:SetJustifyH("LEFT")
+		widget.Label:SetJustifyV("TOP")
+		widget.Label:SetText(label)
+	end
+
+	function InputFactory:CreateEditBox(frame, cvar, label)
+		local editBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+		editBox.cvar = cvar
+		editBox:SetSize(48, 32)
+		editBox:SetAutoFocus(false)
+		editBox.Label = CreateLabel(frame, editBox, label)
+		editBox:SetScript("OnTabPressed", EditBox_OnTabPressed) ---@diagnostic disable-line: undefined-global
+		editBox:SetScript("OnEscapePressed", EditBox_ClearFocus) ---@diagnostic disable-line: undefined-global
+		editBox:SetScript("OnEditFocusLost", EditBox_ClearHighlight) ---@diagnostic disable-line: undefined-global
+		editBox:SetScript("OnEditFocusGained", EditBox_HighlightText) ---@diagnostic disable-line: undefined-global
+		editBox:SetScript("OnEnterPressed", EditBox_ClearFocus) ---@diagnostic disable-line: undefined-global
+		return InputFactory:FinalizeOption(frame, editBox)
+	end
+
+	function InputFactory:CreateEditBoxNumeric(frame, cvar, label)
+		local editBox = self:CreateEditBox(frame, cvar, label)
+		editBox:SetNumeric(true)
+		editBox:SetNumber(100)
+		editBox:SetMaxLetters(3)
+		return InputFactory:FinalizeOption(frame, editBox)
+	end
+
+	function InputFactory:CreateFontString(frame)
+		local fontString = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		fontString:SetNonSpaceWrap(false)
+		fontString:SetWordWrap(false) ---@diagnostic disable-line: redundant-parameter
+		fontString:SetSize(0, 20)
+		fontString:SetJustifyH("LEFT")
+		fontString:SetJustifyV("TOP")
+		return InputFactory:FinalizeOption(frame, fontString)
+	end
+
+	---@class UICheckButtonTemplate : CheckButton
+	---@field public text FontString
+
+	function InputFactory:CreateCheckBox(frame, cvar, label)
+		local checkBox = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate") ---@type UICheckButtonTemplate
+		checkBox.cvar = cvar
+		checkBox:SetSize(32, 32)
+		checkBox.Label = CreateLabel(frame, checkBox, label, -5, 0)
+		return InputFactory:FinalizeOption(frame, checkBox, -10, 0)
 	end
 
 	function CreateConfig(frameName)
@@ -1113,72 +1313,51 @@ do
 		frame.TitleBar:SetHeight(32)
 		frame.TitleBar:SetPoint("TOPLEFT")
 		frame.TitleBar:SetPoint("TOPRIGHT")
-		do
-			frame.HeightScale = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-			frame.HeightScale:SetSize(48, 32)
-			frame.HeightScale:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -20)
-			frame.HeightScale:SetAutoFocus(false)
-			frame.HeightScale:SetNumeric(true)
-			frame.HeightScale:SetNumber(100)
-			frame.HeightScale:SetMaxLetters(3)
-			frame.HeightScale:HookScript("OnShow", function(self)
-				self.value = floor(DB.options.emoteScale * 100 + 0.5)
-				self:SetNumber(self.value)
-			end)
-			frame.HeightScale:HookScript("OnEditFocusLost", function(self)
-				local value = self.value
-				if not value then
-					value = 100
-				elseif value < 0 then
-					value = 0
-				elseif value > 1000 then
-					value = 1000
+		do -- frame.Options
+			frame.Options = {}
+			frame.ScrollFrame = CreateFrame("ScrollFrame", "$parentScrollFrame", frame, "ListScrollFrameTemplate")
+			frame.ScrollFrame.ScrollBarMiddle = _G[format("%s%s", frame.ScrollFrame:GetName(), "Middle")] ---@type Texture
+			frame.ScrollFrame.ScrollChildFrame.Options = frame.Options -- alias
+			frame.ScrollFrame.ScrollBar.scrollStep = 32
+			frame.ScrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 9, -29)
+			frame.ScrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 29)
+			do -- emoteScale
+
+				local emoteScale = InputFactory:CreateEditBoxNumeric(frame.ScrollFrame.ScrollChildFrame, { type = "number", key = "emoteScale", percentile = true }, L.EMOTE_SCALE)
+				emoteScale.Preview = InputFactory:CreateFontString(frame.ScrollFrame.ScrollChildFrame)
+
+				function emoteScale:RandomEmote()
+					local emote = GetRandomEmote()
+					self.emote = emote
+					return emote
 				end
-				DB.options.emoteScale = value / 100
-				self:SetNumber(value)
-			end)
-			frame.HeightScale:HookScript("OnEnterPressed", function(self)
-				self.value = self:GetNumber()
-				self:ClearFocus()
-			end)
-			frame.HeightScale:HookScript("OnEscapePressed", function(self)
-				self:ClearFocus()
-			end)
-			frame.HeightScale:HookScript("OnTextChanged", function(self)
-				self:Update()
-			end)
-			frame.HeightScale:HookScript("OnArrowPressed", function(self)
-				self:Update(true)
-			end)
-			frame.HeightScale.Preview = frame.HeightScale:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-			frame.HeightScale.Preview:SetNonSpaceWrap(false)
-			frame.HeightScale.Preview:SetWordWrap(false) ---@diagnostic disable-line: redundant-parameter
-			frame.HeightScale.Preview:SetSize(256, 256)
-			frame.HeightScale.Preview:SetPoint("TOPLEFT", frame.HeightScale, "BOTTOMLEFT", 0, 0)
-			frame.HeightScale.Preview:SetJustifyH("LEFT")
-			frame.HeightScale.Preview:SetJustifyV("TOP")
-			function frame.HeightScale:RandomEmote()
-				local emote = GetRandomEmote()
-				self.emote = emote
-				return emote
-			end
-			---@param scale? number|nil
-			function frame.HeightScale:UpdateEmote(scale)
-				if not scale then
-					scale = self:GetNumber() / 100
+
+				function emoteScale:UpdateEmote()
+					local emote = self.emote
+					local scale = self:GetNumber() / 100
+					local height = GetHeightForChatFrame(DEFAULT_CHAT_FRAME, scale, 3) ---@diagnostic disable-line: undefined-global
+					local text
+					if emote then
+						text = CEL.SafeReplace(emote.name, emote.name, emote, height, false)
+					else
+						text = NO_EMOTE_MARKUP_FALLBACK
+					end
+					self.Preview:SetText(text)
+					local size = self.Preview:GetUnboundedStringWidth()
+					self.Preview:SetSize(size, size * (emote and emote.ratio or 1))
+					addonConfigFrame:UpdateScrollFrame()
 				end
-				local emote = self.emote
-				local height = GetHeightForChatFrame(DEFAULT_CHAT_FRAME, scale, 3) ---@diagnostic disable-line: undefined-global
-				local text = CEL.SafeReplace(emote.name, emote.name, emote, false, height)
-				self.Preview:SetText(text)
-			end
-			---@param newEmote boolean
-			function frame.HeightScale:Update(newEmote)
-				if newEmote or not self.emote then
-					self:RandomEmote()
+
+				---@param newEmote boolean
+				function emoteScale:Update(newEmote)
+					if newEmote or not self.emote then
+						self:RandomEmote()
+					end
+					self:UpdateEmote()
 				end
-				self:UpdateEmote()
+
 			end
+			InputFactory:CreateCheckBox(frame.ScrollFrame.ScrollChildFrame, { key = "emoteHover" }, L.EMOTE_HOVER)
 		end
 		frame:OnLoad()
 		frame:Hide()

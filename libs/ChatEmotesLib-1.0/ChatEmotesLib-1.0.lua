@@ -568,14 +568,15 @@ end
 
 ---@param text string
 ---@param height? number
+---@param links? boolean
 ---@return string|nil
-local function ReplaceEmotesInText(text, height)
+local function ReplaceEmotesInText(text, height, links)
 	for i = 1, CEL.emotePatterns[0] do
 		local emotePattern = CEL.emotePatterns[i]
 		for raw, emoteName in text:gmatch(emotePattern) do
 			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, true, height), emote
+				return CEL.SafeReplace(text, raw, emote, height, links), emote
 			end
 		end
 	end
@@ -584,7 +585,7 @@ local function ReplaceEmotesInText(text, height)
 		for raw, emoteName in text:gmatch(emotePattern) do
 			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameName)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, true, height), emote
+				return CEL.SafeReplace(text, raw, emote, height, links), emote
 			end
 		end
 	end
@@ -592,9 +593,10 @@ end
 
 ---@param text string
 ---@param height? number
+---@param useLinks? boolean
 ---@param usedEmotes? boolean
 ---@return string|nil, ChatEmotesLib-1.0_Emote[]
-function CEL.ReplaceEmotesInText(text, height, usedEmotes)
+function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes)
 	local segments = SafeSplit(text)
 	local length = segments.length
 	if length == 0 then
@@ -607,7 +609,7 @@ function CEL.ReplaceEmotesInText(text, height, usedEmotes)
 		local segment = segments[i]
 		local buffer = table.concat(segment.buffer, "")
 		if segment.buffer[1] ~= "|" then
-			local replacement, replacementEmote = ReplaceEmotesInText(buffer, height)
+			local replacement, replacementEmote = ReplaceEmotesInText(buffer, height, useLinks)
 			if replacement then
 				replaced = true
 				if usedEmotes then
@@ -631,7 +633,9 @@ end
 ---@param text string
 ---@param raw string
 ---@param emote ChatEmotesLib-1.0_Emote
-function CEL.SafeReplace(text, raw, emote, links, height)
+---@param height? number
+---@param links? boolean
+function CEL.SafeReplace(text, raw, emote, height, links)
 	local pattern = CEL.TextToPattern(raw)
 	local markup = emote.markup
 	if height then
