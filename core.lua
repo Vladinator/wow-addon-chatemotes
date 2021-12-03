@@ -15,6 +15,7 @@ local strlenutf8 = _G.strlenutf8
 ---@field public OPTIONS string
 ---@field public EMOTE_SCALE string
 ---@field public EMOTE_HOVER string
+---@field public MISSING_EMOTE_PACK string
 
 ---@class ChatEmotesNamespace
 ---@field public NewLocale function
@@ -30,7 +31,7 @@ local addonFrame ---@type ChatEmotesUIMixin
 local addonButton ---@type ChatEmotesUIButton
 local addonConfigFrame ---@type ChatEmotesUIConfigMixin
 
-local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 134400, 0, 0, 0, 0, 32, 32, 2, 30, 2, 30)
+local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 132048, 16, 10, -1, 0, 16, 16, 4, 13, 0, 16)
 
 ---@class ChatEmoteStatistics
 ---@field public sent? number|nil
@@ -746,6 +747,7 @@ do
 		self:SetSize(width, height)
 		self:ClearAllPoints()
 		self:SetPoint(point, relativeTo, relativePoint, x, y)
+		self.MissingEmotePackage:SetShown(self.logDataProvider:GetSize() == 0)
 	end
 
 	function UIMixin:OnHide()
@@ -962,11 +964,9 @@ do
 	end
 
 	---@param emotes ChatEmotesLib-1.0_Emote[]
-	---@param loadMax? number
-	function UIMixin:SetEmotes(emotes, loadMax)
+	function UIMixin:SetEmotes(emotes)
 		self.logDataProvider:Flush()
-		if not emotes then
-			self.StatusText:SetText(L.YOU_HAVE_NO_EMOTES_INSTALLED)
+		if not emotes or not emotes[1] then
 			return
 		end
 		self.logDataProvider:InsertTableRange(emotes, 1, emotes[0])
@@ -1053,6 +1053,18 @@ do
 		frame.Log.Search.ScrollBar:SetPoint("BOTTOMLEFT", frame.Log.Search.ScrollBox, "BOTTOMRIGHT", 0, 0)
 		Mixin(frame.Log.Search.ScrollBar, UIScrollCollectionMixin)
 		frame.Log.Search.ScrollBar:OnLoad()
+		frame.MissingEmotePackage = CreateFrame("Frame", nil, frame)
+		frame.MissingEmotePackage:SetFrameStrata("HIGH")
+		frame.MissingEmotePackage:SetAllPoints(frame.Log)
+		frame.MissingEmotePackage.Background = frame.MissingEmotePackage:CreateTexture(nil, "BACKGROUND")
+		frame.MissingEmotePackage.Background:SetAllPoints()
+		frame.MissingEmotePackage.Background:SetColorTexture(0, 0, 0)
+		frame.MissingEmotePackage.Text = frame.MissingEmotePackage:CreateFontString(nil, "OVERLAY", "GameFontNormalLargeOutline")
+		frame.MissingEmotePackage.Text:SetPoint("TOPLEFT", 20, -20)
+		frame.MissingEmotePackage.Text:SetPoint("BOTTOMRIGHT", -20, 20)
+		frame.MissingEmotePackage.Text:SetJustifyH("CENTER")
+		frame.MissingEmotePackage.Text:SetJustifyV("MIDDLE")
+		frame.MissingEmotePackage.Text:SetText(L.MISSING_EMOTE_PACK)
 		frame:OnLoad()
 		frame:Hide()
 		return frame
