@@ -1,7 +1,5 @@
 assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 
-local UTF8 = LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
-
 ---@class ChatEmotesLib-1.0_PackageStruct @The raw data provided from external sources to register their emotes with the library.
 ---@field public name string
 ---@field public path string
@@ -58,14 +56,12 @@ CEL.emoteWrapper = CEL.emoteWrapper or "#"
 ---@type string[]
 CEL.emotePatterns = CEL.emotePatterns or {
 	[0] = 1,
-	"(%" .. CEL.emoteWrapper .. "%s*([^#%s]+)%s*%" .. CEL.emoteWrapper .. ")",
+	"(%" .. CEL.emoteWrapper .. "%s*([^%" .. CEL.emoteWrapper .. "%s]+)%s*%" .. CEL.emoteWrapper .. ")",
 }
 
 ---@type string[]
 CEL.emotePatternsAggressive = CEL.emotePatternsAggressive or {
-	[0] = 4,
-	"((%" .. CEL.emoteWrapper .. "%:[%w_]+%:%" .. CEL.emoteWrapper .. "))",
-	"((%" .. CEL.emoteWrapper .. "[%w_]+%" .. CEL.emoteWrapper .. "))",
+	[0] = 2,
 	"((%:[%w_]+%:))",
 	"(([%w_]+))",
 }
@@ -166,7 +162,7 @@ local function SafePattern(text)
 		:gsub("% ", "%% ")
 end
 
-local EMOJI_REPLACE = true
+local EMOJI_REPLACE = false -- TODO: needs optimization before going live as referenced in issue #3
 local EMOJI_ALLOW_LINKS = true
 local EMOJI_MIN_BYTES = 3
 local EMOJI_TONE = { ["🏻"] = 1, ["🏼"] = 2, ["🏽"] = 3, ["🏾"] = 4, ["🏿"] = 5 }
@@ -181,6 +177,8 @@ local EMOJI_TONE_PATTERN do
 	temp[i] = "]"
 	EMOJI_TONE_PATTERN = table.concat(temp, "")
 end
+
+local UTF8 = EMOJI_REPLACE and LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
 
 ---@param text string
 local function EmojiIterator(text)
@@ -300,9 +298,9 @@ do
 		while i < len do
 			i = i + 1
 			local chr = strsub(text, i, i)
-			local chr2 = strsub(text, i + 1, i + 1)
 			repeat
 				if chr == "|" then
+					local chr2 = strsub(text, i + 1, i + 1)
 					local seq = sequences[chr2]
 					if seq then
 						if seq == true or chr2 == "c" then
