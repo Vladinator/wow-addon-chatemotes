@@ -1350,7 +1350,7 @@ do
 					local height = GetHeightForChatFrame(DEFAULT_CHAT_FRAME, scale, 3) ---@diagnostic disable-line: undefined-global
 					local text
 					if emote then
-						text = CEL.SafeReplace(emote.name, emote.name, emote, height, false)
+						text = CEL.SafeReplace(emote.name, nil, emote, height, false)
 					else
 						text = NO_EMOTE_MARKUP_FALLBACK
 					end

@@ -35,6 +35,13 @@ local MAJOR, MINOR = "ChatEmotesLib-1.0", 1
 local CEL, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@type ChatEmotesLib-1.0
 if not CEL then return end
 
+local UTF8 = LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
+
+local strlen = UTF8 and UTF8.len or _G.strlenutf8 or _G.strlen
+local strsub = UTF8 and UTF8.sub or _G.strsub
+local strchar = UTF8 and UTF8.char or _G.strchar
+local strbyte = UTF8 and UTF8.byte or _G.strbyte
+
 local assert = assert
 local format = format
 local ipairs = ipairs
@@ -51,12 +58,15 @@ CEL.packageNames = CEL.packageNames or { [0] = 0 }
 ---@type ChatEmotesLib-1.0_Emote[]
 CEL.emotes = CEL.emotes or { [0] = 0 }
 
+---@type table<string, ChatEmotesLib-1.0_Emote>
+CEL.unicodeEmotes = CEL.unicodeEmotes or {}
+
 CEL.emoteWrapper = CEL.emoteWrapper or "#"
 
 ---@type string[]
 CEL.emotePatterns = CEL.emotePatterns or {
-	[0] = 1,
-	"(%" .. CEL.emoteWrapper .. "%s*([^%" .. CEL.emoteWrapper .. "%s]+)%s*%" .. CEL.emoteWrapper .. ")",
+	[0] = 0,
+	-- "(%" .. CEL.emoteWrapper .. "%s*([^%" .. CEL.emoteWrapper .. "%s]+)%s*%" .. CEL.emoteWrapper .. ")",
 }
 
 ---@type string[]
@@ -162,59 +172,9 @@ local function SafePattern(text)
 		:gsub("% ", "%% ")
 end
 
-local EMOJI_REPLACE = false -- TODO: needs optimization before going live as referenced in issue #3
-local EMOJI_ALLOW_LINKS = true
-local EMOJI_MIN_BYTES = 3
-local EMOJI_TONE = { ["🏻"] = 1, ["🏼"] = 2, ["🏽"] = 3, ["🏾"] = 4, ["🏿"] = 5 }
-local EMOJI_TONE_PATTERN do
-	local temp = {"["}
-	local i = 1
-	for chr, _ in pairs(EMOJI_TONE) do
-		i = i + 1
-		temp[i] = chr
-	end
-	i = i + 1
-	temp[i] = "]"
-	EMOJI_TONE_PATTERN = table.concat(temp, "")
-end
-
-local UTF8 = EMOJI_REPLACE and LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
-
----@param text string
-local function EmojiIterator(text)
-	return text:gmatch("[%z\1-\127\194-\244][\128-\191]+")
-end
-
----@type table<string, ChatEmotesLib-1.0_Emote>
-CEL.emoteUnicodeCache = CEL.emoteUnicodeCache or {}
-
----@param unicode string
-local function GetUnicodeCache(unicode)
-	return CEL.emoteUnicodeCache[unicode]
-end
-
----@param unicode string
----@param emote ChatEmotesLib-1.0_Emote
-local function SetUnicodeCache(unicode, emote)
-	CEL.emoteUnicodeCache[unicode] = emote
-end
-
 ---@param unicode string
 local function GetEmoteByUnicode(unicode)
-	local cache = GetUnicodeCache(unicode)
-	if cache ~= nil then
-		return cache
-	end
-	local result = false
-	for i = 1, CEL.emotes[0] do
-		local emote = CEL.emotes[i]
-		if emote.unicode and emote.unicode == unicode then
-			result = emote
-			break
-		end
-	end
-	SetUnicodeCache(unicode, result)
-	return result
+	return CEL.unicodeEmotes[unicode]
 end
 
 ---@param text string
@@ -277,10 +237,6 @@ do
 
 	end
 
-	local strlen = UTF8 and UTF8.len or _G.strlenutf8 or _G.strlen
-	local strsub = UTF8 and UTF8.sub or _G.strsub
-	local strgsub = UTF8 and UTF8.gsub or _G.gsub
-
 	local function createsegments(text)
 
 		local segments = newsegments()
@@ -291,39 +247,53 @@ do
 		local skip = 0
 		local level = 0
 
-		if len ~= text:len() then
-			text = strgsub(text, EMOJI_TONE_PATTERN, "")
-		end
+		local chr
+		local chr2
+		local seq
+		local split
 
 		while i < len do
+
 			i = i + 1
-			local chr = strsub(text, i, i)
+			chr = strsub(text, i, i)
+
 			repeat
+
 				if chr == "|" then
-					local chr2 = strsub(text, i + 1, i + 1)
-					local seq = sequences[chr2]
-					if seq then
-						if seq == true or chr2 == "c" then
-							if chr2 == "H" then
-								level = level + 2
-							else
-								level = level + 1
-							end
-						elseif level > 0 then
-							level = level - 1
+					if i == len then
+						break
+					end
+					chr2 = strsub(text, i + 1, i + 1)
+					if chr2 == "|" then
+						break
+					end
+					seq = sequences[chr2]
+					if not seq then
+						break
+					end
+					local plevel = level
+					if seq == true or chr2 == "c" then
+						if chr2 == "H" then
+							level = level + 2
+						else
+							level = level + 1
 						end
-						if seq ~= true then
-							skip = seq
-						end
-						if level == 0 then
-							segment = segments()
-						end
+					elseif level > 0 then
+						level = level - 1
+					end
+					if seq ~= true then
+						skip = seq
+					end
+					if plevel == 0 or level == 0 then
+						segment = segments()
 					end
 					break
 				end
+
 				if level > 0 then
 					break
 				end
+
 				if skip > 0 then
 					skip = skip - 1
 					if skip == 0 then
@@ -331,18 +301,27 @@ do
 					end
 					break
 				end
+
 				if chr == " " then
+					split = true
 					segment = segments()
 					break
 				end
+
 			until true
-			if EMOJI_REPLACE and chr:len() >= EMOJI_MIN_BYTES and GetEmoteByUnicode(chr) then
+
+			if skip == 0 and level == 0 and CEL.unicodeEmotes[chr] then
 				segment = segments()
-				segment.buffer(chr)
-				segment = segments()
-			else
-				segment.buffer(chr)
+				split = true
 			end
+
+			segment.buffer(chr)
+
+			if split then
+				split = false
+				segment = segments()
+			end
+
 		end
 
 		return segments
@@ -363,7 +342,7 @@ do
 		for i = 1, segments.length do
 			local segment = segments[i]
 			local buffer = table.concat(segment.buffer, "")
-			if segment.buffer[1] ~= "|" then
+			if segment.buffer[1] ~= "|" or segment.buffer[2] == "|" then
 				buffer = buffer:gsub(pattern, replacement, 1)
 			end
 			result(buffer)
@@ -507,6 +486,7 @@ end
 ---@return ChatEmotesLib-1.0_Emote[]
 local function ProcessPackageEmotes(package, path, emotes)
 	local allEmotes = CEL.emotes
+	local unicodeEmotes = CEL.unicodeEmotes
 	local icons
 	for folder, files in pairs(emotes) do
 		if type(files) == "table" then
@@ -520,6 +500,10 @@ local function ProcessPackageEmotes(package, path, emotes)
 					end
 					icons[0] = icons[0] + 1
 					icons[icons[0]] = emote
+					local unicode = emote.unicode
+					if unicode and strbyte(unicode) > 255 then
+						unicodeEmotes[unicode] = emote
+					end
 				end
 			end
 		end
@@ -626,11 +610,6 @@ function CEL.TextToPattern(text)
 end
 
 ---@param text string
-function CEL.EmojiIterator(text)
-	return EmojiIterator(text)
-end
-
----@param text string
 function CEL.GetEmoteByUnicode(text)
 	return GetEmoteByUnicode(text)
 end
@@ -651,39 +630,29 @@ end
 ---@param height? number
 ---@param links? boolean
 ---@return string|nil, ChatEmotesLib-1.0_Emote|nil, ChatEmotesLib-1.0_Emote[]|nil
-local function ReplaceEmotesInText(text, height, links)
-	local unicodeEmotes
-	for unicode in EmojiIterator(text) do
-		local emote = GetEmoteByUnicode(unicode)
-		if emote then
-			if not unicodeEmotes then
-				unicodeEmotes = { [0] = 0 }
-			end
-			unicodeEmotes[0] = unicodeEmotes[0] + 1
-			unicodeEmotes[unicodeEmotes[0]] = emote
-			text = CEL.SafeReplace(text, unicode, emote, height, (not EMOJI_REPLACE or EMOJI_ALLOW_LINKS) and links)
-		end
+local function ReplaceEmoteInWord(text, height, links)
+	local emote = GetEmoteByUnicode(text)
+	if emote then
+		return CEL.SafeReplace(text, nil, emote, height, links), nil, emote
 	end
+	local emotePattern
 	for i = 1, CEL.emotePatterns[0] do
-		local emotePattern = CEL.emotePatterns[i]
+		emotePattern = CEL.emotePatterns[i]
 		for raw, emoteName in text:gmatch(emotePattern) do
-			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless)
+			emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, height, links), emote, unicodeEmotes
+				return CEL.SafeReplace(text, raw, emote, height, links), emote
 			end
 		end
 	end
 	for i = 1, CEL.emotePatternsAggressive[0] do
-		local emotePattern = CEL.emotePatternsAggressive[i]
+		emotePattern = CEL.emotePatternsAggressive[i]
 		for raw, emoteName in text:gmatch(emotePattern) do
-			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameName)
+			emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameName)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, height, links), emote, unicodeEmotes
+				return CEL.SafeReplace(text, raw, emote, height, links), emote
 			end
 		end
-	end
-	if unicodeEmotes then
-		return text, nil, unicodeEmotes
 	end
 end
 
@@ -704,26 +673,24 @@ function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes)
 	for i = 1, length do
 		local segment = segments[i]
 		local buffer = table.concat(segment.buffer, "")
-		if segment.buffer[1] ~= "|" then
-			local replacement, replacementEmote, replacementUnicodeEmotes = ReplaceEmotesInText(buffer, height, useLinks)
-			if replacement then
+		if segment.buffer[1] ~= "|" or segment.buffer[2] == "|" then
+			local newBuffer, replacedEmote, replacedUnicodeEmote = ReplaceEmoteInWord(buffer, height, useLinks)
+			if newBuffer then
 				replaced = true
 				if usedEmotes then
 					if not emotes then
 						emotes = { [0] = 0 }
 					end
-					if replacementEmote then
+					if replacedEmote then
 						emotes[0] = emotes[0] + 1
-						emotes[emotes[0]] = replacementEmote
+						emotes[emotes[0]] = replacedEmote
 					end
-					if replacementUnicodeEmotes then
-						for j = 1, replacementUnicodeEmotes[0] do
-							emotes[0] = emotes[0] + 1
-							emotes[emotes[0]] = replacementUnicodeEmotes[j]
-						end
+					if replacedUnicodeEmote then
+						emotes[0] = emotes[0] + 1
+						emotes[emotes[0]] = replacedUnicodeEmote
 					end
 				end
-				buffer = replacement
+				buffer = newBuffer
 			end
 		end
 		results(buffer)
@@ -735,17 +702,21 @@ function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes)
 end
 
 ---@param text string
----@param raw string
+---@param raw string|nil
 ---@param emote ChatEmotesLib-1.0_Emote
 ---@param height? number
 ---@param links? boolean
 function CEL.SafeReplace(text, raw, emote, height, links)
-	local pattern = CEL.TextToPattern(raw)
 	local markup = emote.markup
 	if height then
 		markup = markup:gsub(":0:0", format(":%d:%d", height, height * (emote.ratio or 1)), 1)
 	end
-	return SafeReplace(text, pattern, links and format(CEL.emoteLinkFormat, CEL.emoteLinkUnique, emote.name, markup) or markup)
+	local replacement = links and format(CEL.emoteLinkFormat, CEL.emoteLinkUnique, emote.name, markup) or markup
+	if not raw then
+		return replacement
+	end
+	local pattern = CEL.TextToPattern(raw)
+	return SafeReplace(text, pattern, replacement)
 end
 
 ---@param link string
@@ -775,7 +746,7 @@ local function randomString(maxLen, minLen)
 	while i < len do
 		i = i + 1
 		if UTF8 and random(1, 10) == 1 then
-			buffer[i] = UTF8.char(random(127988, 128512))
+			buffer[i] = strchar(random(127988, 128512))
 		else
 			buffer[i] = strchar(random(32, 122))
 		end
