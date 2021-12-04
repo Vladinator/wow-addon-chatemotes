@@ -25,6 +25,7 @@ assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 ---@field public offsetR? number
 ---@field public offsetT? number
 ---@field public offsetB? number
+---@field public unicode? string
 
 ---@class ChatEmotesLib-1.0_SearchCache @v1.0 of the emote structure.
 ---@field public emotes ChatEmotesLib-1.0_Emote[]
@@ -370,6 +371,20 @@ local function SetSearchCache(customFilter, name, emotes, weights)
 	return nameCache
 end
 
+---@type table<string, ChatEmotesLib-1.0_Emote>
+CEL.emoteUnicodeCache = CEL.emoteUnicodeCache or {}
+
+---@param unicode string
+local function GetUnicodeCache(unicode)
+	return CEL.emoteUnicodeCache[unicode]
+end
+
+---@param unicode string
+---@param emote ChatEmotesLib-1.0_Emote
+local function SetUnicodeCache(unicode, emote)
+	CEL.emoteUnicodeCache[unicode] = emote
+end
+
 ---@param package string
 ---@param path string
 ---@param folder string
@@ -390,6 +405,7 @@ local function ProcessEmote(package, path, folder, file)
 	local offsetR
 	local offsetT
 	local offsetB
+	local unicode
 	if type(file) == "table" then
 		name = file.name
 		filePath = format("%s/%s/%s", path, folder, file.file or name)
@@ -405,6 +421,7 @@ local function ProcessEmote(package, path, folder, file)
 		ratio = file.ratio
 		ignoreSuggestion = file.ignoreSuggestion
 		args = file.args
+		unicode = file.unicode
 	else
 		name = file
 		filePath = format("%s/%s/%s", path, folder, file)
@@ -427,6 +444,7 @@ local function ProcessEmote(package, path, folder, file)
 		offsetR = offsetR,
 		offsetT = offsetT,
 		offsetB = offsetB,
+		unicode = unicode,
 	}, CEL.emoteMetatable)
 end
 
@@ -549,6 +567,24 @@ function CEL.SortEmotes(emotes, weights)
 	end)
 end
 
+---@param unicode string
+function CEL.GetEmoteByUnicode(unicode)
+	local cache = GetUnicodeCache(unicode)
+	if cache ~= nil then
+		return cache
+	end
+	local result = false
+	for i = 1, CEL.emotes[0] do
+		local emote = CEL.emotes[i]
+		if emote.unicode and emote.unicode == unicode then
+			result = emote
+			break
+		end
+	end
+	SetUnicodeCache(unicode, result)
+	return result
+end
+
 ---@param text string
 function CEL.TextToPattern(text)
 	return SafePattern(text)
@@ -567,16 +603,38 @@ function CEL.ReplaceText(text, pattern, replacement)
 end
 
 ---@param text string
+local function EmojiIterator(text)
+	return text:gmatch("[%z\1-\127\194-\244][\128-\191]+")
+end
+
+---@param text string
+function CEL.EmojiIterator(text)
+	return EmojiIterator(text)
+end
+
+---@param text string
 ---@param height? number
 ---@param links? boolean
----@return string|nil
+---@return string|nil, ChatEmotesLib-1.0_Emote|nil, ChatEmotesLib-1.0_Emote[]|nil
 local function ReplaceEmotesInText(text, height, links)
+	local unicodeEmotes
+	for unicode in EmojiIterator(text) do
+		local emote = CEL.GetEmoteByUnicode(unicode)
+		if emote then
+			if not unicodeEmotes then
+				unicodeEmotes = { [0] = 0 }
+			end
+			unicodeEmotes[0] = unicodeEmotes[0] + 1
+			unicodeEmotes[unicodeEmotes[0]] = emote
+			text = CEL.SafeReplace(text, unicode, emote, height, links)
+		end
+	end
 	for i = 1, CEL.emotePatterns[0] do
 		local emotePattern = CEL.emotePatterns[i]
 		for raw, emoteName in text:gmatch(emotePattern) do
 			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, height, links), emote
+				return CEL.SafeReplace(text, raw, emote, height, links), emote, unicodeEmotes
 			end
 		end
 	end
@@ -585,9 +643,12 @@ local function ReplaceEmotesInText(text, height, links)
 		for raw, emoteName in text:gmatch(emotePattern) do
 			local emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameName)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, height, links), emote
+				return CEL.SafeReplace(text, raw, emote, height, links), emote, unicodeEmotes
 			end
 		end
+	end
+	if unicodeEmotes then
+		return text, nil, unicodeEmotes
 	end
 end
 
@@ -609,15 +670,23 @@ function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes)
 		local segment = segments[i]
 		local buffer = table.concat(segment.buffer, "")
 		if segment.buffer[1] ~= "|" then
-			local replacement, replacementEmote = ReplaceEmotesInText(buffer, height, useLinks)
+			local replacement, replacementEmote, replacementUnicodeEmotes = ReplaceEmotesInText(buffer, height, useLinks)
 			if replacement then
 				replaced = true
 				if usedEmotes then
 					if not emotes then
 						emotes = { [0] = 0 }
 					end
-					emotes[0] = emotes[0] + 1
-					emotes[emotes[0]] = replacementEmote
+					if replacementEmote then
+						emotes[0] = emotes[0] + 1
+						emotes[emotes[0]] = replacementEmote
+					end
+					if replacementUnicodeEmotes then
+						for j = 1, replacementUnicodeEmotes[0] do
+							emotes[0] = emotes[0] + 1
+							emotes[emotes[0]] = replacementUnicodeEmotes[j]
+						end
+					end
 				end
 				buffer = replacement
 			end
