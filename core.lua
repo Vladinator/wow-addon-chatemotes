@@ -10,12 +10,12 @@ local strlenutf8 = _G.strlenutf8
 ---@field public LOCALE_NAME string
 ---@field public CHAT_EMOTES string
 ---@field public YOU_HAVE_NO_EMOTES_INSTALLED string
+---@field public MISSING_EMOTE_PACK string
 ---@field public SEARCH_RESULTS string
 ---@field public CHAT_EMOTES_OPTIONS string
 ---@field public OPTIONS string
 ---@field public EMOTE_SCALE string
 ---@field public EMOTE_HOVER string
----@field public MISSING_EMOTE_PACK string
 
 ---@class ChatEmotesNamespace
 ---@field public NewLocale function
