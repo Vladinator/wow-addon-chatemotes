@@ -1,5 +1,7 @@
 assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 
+local UTF8 = LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
+
 ---@class ChatEmotesLib-1.0_PackageStruct @The raw data provided from external sources to register their emotes with the library.
 ---@field public name string
 ---@field public path string
@@ -164,6 +166,59 @@ local function SafePattern(text)
 		:gsub("% ", "%% ")
 end
 
+local EMOJI_REPLACE = true
+local EMOJI_ALLOW_LINKS = true
+local EMOJI_MIN_BYTES = 3
+local EMOJI_TONE = { ["🏻"] = 1, ["🏼"] = 2, ["🏽"] = 3, ["🏾"] = 4, ["🏿"] = 5 }
+local EMOJI_TONE_PATTERN do
+	local temp = {"["}
+	local i = 1
+	for chr, _ in pairs(EMOJI_TONE) do
+		i = i + 1
+		temp[i] = chr
+	end
+	i = i + 1
+	temp[i] = "]"
+	EMOJI_TONE_PATTERN = table.concat(temp, "")
+end
+
+---@param text string
+local function EmojiIterator(text)
+	return text:gmatch("[%z\1-\127\194-\244][\128-\191]+")
+end
+
+---@type table<string, ChatEmotesLib-1.0_Emote>
+CEL.emoteUnicodeCache = CEL.emoteUnicodeCache or {}
+
+---@param unicode string
+local function GetUnicodeCache(unicode)
+	return CEL.emoteUnicodeCache[unicode]
+end
+
+---@param unicode string
+---@param emote ChatEmotesLib-1.0_Emote
+local function SetUnicodeCache(unicode, emote)
+	CEL.emoteUnicodeCache[unicode] = emote
+end
+
+---@param unicode string
+local function GetEmoteByUnicode(unicode)
+	local cache = GetUnicodeCache(unicode)
+	if cache ~= nil then
+		return cache
+	end
+	local result = false
+	for i = 1, CEL.emotes[0] do
+		local emote = CEL.emotes[i]
+		if emote.unicode and emote.unicode == unicode then
+			result = emote
+			break
+		end
+	end
+	SetUnicodeCache(unicode, result)
+	return result
+end
+
 ---@param text string
 local function SafeSplit(text) end
 
@@ -224,22 +279,30 @@ do
 
 	end
 
+	local strlen = UTF8 and UTF8.len or _G.strlenutf8 or _G.strlen
+	local strsub = UTF8 and UTF8.sub or _G.strsub
+	local strgsub = UTF8 and UTF8.gsub or _G.gsub
+
 	local function createsegments(text)
 
 		local segments = newsegments()
 		local segment = segments()
 
 		local i = 0
-		local len = text:len()
+		local len = strlen(text)
 		local skip = 0
 		local level = 0
 
+		if len ~= text:len() then
+			text = strgsub(text, EMOJI_TONE_PATTERN, "")
+		end
+
 		while i < len do
 			i = i + 1
-			local chr = text:sub(i, i)
+			local chr = strsub(text, i, i)
+			local chr2 = strsub(text, i + 1, i + 1)
 			repeat
 				if chr == "|" then
-					local chr2 = text:sub(i + 1, i + 1)
 					local seq = sequences[chr2]
 					if seq then
 						if seq == true or chr2 == "c" then
@@ -275,7 +338,13 @@ do
 					break
 				end
 			until true
-			segment.buffer(chr)
+			if EMOJI_REPLACE and chr:len() >= EMOJI_MIN_BYTES and GetEmoteByUnicode(chr) then
+				segment = segments()
+				segment.buffer(chr)
+				segment = segments()
+			else
+				segment.buffer(chr)
+			end
 		end
 
 		return segments
@@ -369,20 +438,6 @@ local function SetSearchCache(customFilter, name, emotes, weights)
 		nameCache.weights = weights
 	end
 	return nameCache
-end
-
----@type table<string, ChatEmotesLib-1.0_Emote>
-CEL.emoteUnicodeCache = CEL.emoteUnicodeCache or {}
-
----@param unicode string
-local function GetUnicodeCache(unicode)
-	return CEL.emoteUnicodeCache[unicode]
-end
-
----@param unicode string
----@param emote ChatEmotesLib-1.0_Emote
-local function SetUnicodeCache(unicode, emote)
-	CEL.emoteUnicodeCache[unicode] = emote
 end
 
 ---@param package string
@@ -567,27 +622,19 @@ function CEL.SortEmotes(emotes, weights)
 	end)
 end
 
----@param unicode string
-function CEL.GetEmoteByUnicode(unicode)
-	local cache = GetUnicodeCache(unicode)
-	if cache ~= nil then
-		return cache
-	end
-	local result = false
-	for i = 1, CEL.emotes[0] do
-		local emote = CEL.emotes[i]
-		if emote.unicode and emote.unicode == unicode then
-			result = emote
-			break
-		end
-	end
-	SetUnicodeCache(unicode, result)
-	return result
-end
-
 ---@param text string
 function CEL.TextToPattern(text)
 	return SafePattern(text)
+end
+
+---@param text string
+function CEL.EmojiIterator(text)
+	return EmojiIterator(text)
+end
+
+---@param text string
+function CEL.GetEmoteByUnicode(text)
+	return GetEmoteByUnicode(text)
 end
 
 ---@param text string
@@ -603,30 +650,20 @@ function CEL.ReplaceText(text, pattern, replacement)
 end
 
 ---@param text string
-local function EmojiIterator(text)
-	return text:gmatch("[%z\1-\127\194-\244][\128-\191]+")
-end
-
----@param text string
-function CEL.EmojiIterator(text)
-	return EmojiIterator(text)
-end
-
----@param text string
 ---@param height? number
 ---@param links? boolean
 ---@return string|nil, ChatEmotesLib-1.0_Emote|nil, ChatEmotesLib-1.0_Emote[]|nil
 local function ReplaceEmotesInText(text, height, links)
 	local unicodeEmotes
 	for unicode in EmojiIterator(text) do
-		local emote = CEL.GetEmoteByUnicode(unicode)
+		local emote = GetEmoteByUnicode(unicode)
 		if emote then
 			if not unicodeEmotes then
 				unicodeEmotes = { [0] = 0 }
 			end
 			unicodeEmotes[0] = unicodeEmotes[0] + 1
 			unicodeEmotes[unicodeEmotes[0]] = emote
-			text = CEL.SafeReplace(text, unicode, emote, height, links)
+			text = CEL.SafeReplace(text, unicode, emote, height, (not EMOJI_REPLACE or EMOJI_ALLOW_LINKS) and links)
 		end
 	end
 	for i = 1, CEL.emotePatterns[0] do
@@ -739,7 +776,11 @@ local function randomString(maxLen, minLen)
 	local buffer = {}
 	while i < len do
 		i = i + 1
-		buffer[i] = strchar(random(32, 122))
+		if UTF8 and random(1, 10) == 1 then
+			buffer[i] = UTF8.char(random(127988, 128512))
+		else
+			buffer[i] = strchar(random(32, 122))
+		end
 	end
 	return table.concat(buffer, "")
 end
@@ -949,7 +990,9 @@ local function printResults(results, totalDiff)
 		group[#group + 1] = result
 	end
 	for _, group in ipairs(grouped) do
-		group.average = group.total/group.count
+		if group.count > 0 then
+			group.average = group.total/group.count
+		end
 		group.percentile = group.total/totalDiff
 	end
 	table.sort(grouped, function(a, b)
@@ -957,7 +1000,9 @@ local function printResults(results, totalDiff)
 	end)
 	local buffer = {}
 	for i, group in ipairs(grouped) do
-		buffer[i + 1] = format("[%s] %d (%.1f ms) => %.1f%% // %s", group.index, group.count, group.total/group.count, group.total/totalDiff*100, factoryNames[group.index])
+		if group.count > 0 then
+			buffer[i + 1] = format("[%s] %d (%.1f ms) => %.1f%% // %s", group.index, group.count, group.total/group.count, group.total/totalDiff*100, factoryNames[group.index])
+		end
 	end
 	buffer[#buffer + 1] = format("[%s] %d (%.1f ms) => %.1f%%", "*", #results, totalDiff, 100)
 	return buffer
@@ -968,7 +1013,7 @@ _G.EmotesLibTest = function(numTests, specificTestIndex)
 		return
 	end
 	local debugprofilestop = _G.debugprofilestop
-	local EL_ReplaceEmotesInText = EL.ReplaceEmotesInText
+	local EL_ReplaceEmotesInText = CEL.ReplaceEmotesInText
 	local tests, numTests = createTests(numTests, specificTestIndex)
 	local results = {}
 	local totalStarted = debugprofilestop()
