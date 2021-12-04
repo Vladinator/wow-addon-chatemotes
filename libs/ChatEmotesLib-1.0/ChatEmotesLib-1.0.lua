@@ -380,6 +380,9 @@ CEL.emoteMetatable = CEL.emoteMetatable or {
 ---@type table<function, table<string, ChatEmotesLib-1.0_SearchCache>>
 CEL.emoteSearchCache = CEL.emoteSearchCache or {}
 
+---@type table<string, ChatEmotesLib-1.0_Emote>
+CEL.emoteWordCache = CEL.emoteWordCache or {}
+
 ---@param customFilter function
 ---@param name string
 ---@return ChatEmotesLib-1.0_SearchCache|nil
@@ -626,34 +629,48 @@ function CEL.ReplaceText(text, pattern, replacement)
 	return SafeReplace(text, pattern, replacement)
 end
 
----@param text string
+---@param word string
 ---@param height? number
 ---@param links? boolean
 ---@return string|nil, ChatEmotesLib-1.0_Emote|nil, ChatEmotesLib-1.0_Emote[]|nil
-local function ReplaceEmoteInWord(text, height, links)
-	local emote = GetEmoteByUnicode(text)
+local function ReplaceEmoteInWord(word, height, links)
+	if not word or strlen(word) == 0 then
+		return
+	end
+	local cache = CEL.emoteWordCache[word]
+	if cache ~= nil then
+		return cache
+	end
+	local emote = GetEmoteByUnicode(word)
 	if emote then
-		return CEL.SafeReplace(text, nil, emote, height, links), nil, emote
+		local newWord = CEL.SafeReplace(word, nil, emote, height, links)
+		CEL.emoteWordCache[word] = newWord
+		return newWord, nil, emote
 	end
 	local emotePattern
 	for i = 1, CEL.emotePatterns[0] do
 		emotePattern = CEL.emotePatterns[i]
-		for raw, emoteName in text:gmatch(emotePattern) do
+		for raw, emoteName in word:gmatch(emotePattern) do
 			emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, height, links), emote
+				local newWord = CEL.SafeReplace(word, raw, emote, height, links)
+				CEL.emoteWordCache[word] = newWord
+				return newWord, emote
 			end
 		end
 	end
 	for i = 1, CEL.emotePatternsAggressive[0] do
 		emotePattern = CEL.emotePatternsAggressive[i]
-		for raw, emoteName in text:gmatch(emotePattern) do
+		for raw, emoteName in word:gmatch(emotePattern) do
 			emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameName)
 			if emote then
-				return CEL.SafeReplace(text, raw, emote, height, links), emote
+				local newWord = CEL.SafeReplace(word, raw, emote, height, links)
+				CEL.emoteWordCache[word] = newWord
+				return newWord, emote
 			end
 		end
 	end
+	CEL.emoteWordCache[word] = false
 end
 
 ---@param text string

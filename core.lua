@@ -81,7 +81,7 @@ local activeChannels = {}
 ---@type table<number, boolean>
 local ignoreChannels = {
 	-- [1] = true, -- General (General - %s)
-	-- [2] = true, -- Trade (Trade - %s)
+	[2] = true, -- Trade (Trade - %s)
 	-- [22] = true, -- LocalDefense (LocalDefense - %s)
 	-- [26] = true, -- LookingForGroup (LookingForGroup)
 	-- [27] = true, -- BigfootWorldChannel (BigfootWorldChannel)
