@@ -35,19 +35,27 @@ local MAJOR, MINOR = "ChatEmotesLib-1.0", 1
 local CEL, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@type ChatEmotesLib-1.0
 if not CEL then return end
 
-local UTF8 = LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
-
-local strlen = UTF8 and UTF8.len or _G.strlenutf8 or _G.strlen
-local strsub = UTF8 and UTF8.sub or _G.strsub
-local strchar = UTF8 and UTF8.char or _G.strchar
-local strbyte = UTF8 and UTF8.byte or _G.strbyte
-
 local assert = assert
 local format = format
 local ipairs = ipairs
 local pairs = pairs
 local type = type
+
 local strcmputf8i = strcmputf8i
+local strsplit = strsplit
+
+local strchar = strchar
+local strbyte = strbyte
+local strfind = strfind
+local strlen = strlen
+local strsub = strsub
+
+local UTF8 = LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
+local strcharutf8 = UTF8 and UTF8.char or strchar
+local strbyteutf8 = UTF8 and UTF8.byte or strbyte
+local strfindutf8 = UTF8 and UTF8.find or strfind
+local strlenutf8 = UTF8 and UTF8.len or _G.strlenutf8 or strlen
+local strsubutf8 = UTF8 and UTF8.sub or strsub
 
 ---@type table<string, ChatEmotesLib-1.0_Emote[]>
 CEL.packages = CEL.packages or {}
@@ -61,20 +69,14 @@ CEL.emotes = CEL.emotes or { [0] = 0 }
 ---@type table<string, ChatEmotesLib-1.0_Emote>
 CEL.unicodeEmotes = CEL.unicodeEmotes or {}
 
-CEL.emoteWrapper = CEL.emoteWrapper or "#"
-
 ---@type string[]
 CEL.emotePatterns = CEL.emotePatterns or {
-	[0] = 0,
-	-- "(%" .. CEL.emoteWrapper .. "%s*([^%" .. CEL.emoteWrapper .. "%s]+)%s*%" .. CEL.emoteWrapper .. ")",
-}
-
----@type string[]
-CEL.emotePatternsAggressive = CEL.emotePatternsAggressive or {
 	[0] = 2,
 	"((%:[%w_]+%:))",
 	"(([%w_]+))",
 }
+
+CEL.emoteUnicodePattern = CEL.emoteUnicodePattern or "[%z\1-\127\194-\244][\128-\191]+"
 
 ---@type table<string, function>
 CEL.filter = {
@@ -178,6 +180,7 @@ local function GetEmoteByUnicode(unicode)
 end
 
 ---@param text string
+---@return table, table, number @`segments`, `ignore`, `length`
 local function SafeSplit(text) end
 
 ---@param text string
@@ -185,151 +188,61 @@ local function SafeSplit(text) end
 ---@param replacement string
 local function SafeReplace(text, pattern, replacement) end
 
-local function StringBuffer() end
-
 do
 
-	local sequences = {
-		c = 10, r = 2,
-		K = true, k = 2,
-		H = true, h = 2,
-		T = true, t = 2,
-		A = true, a = 2,
-	}
-
-	local newbuffer
-	local newsegments do
-
-		local buffer = {
-			__len = function(self)
-				return self.length
-			end,
-			__concat = function(self, item)
-				self.length = self.length + 1
-				self[self.length] = item
-				return self
-			end,
-			__call = function(self, item)
-				return self .. item
-			end,
-		}
-
-		local segments = {
-			__len = buffer.__len,
-			__concat = buffer.__concat,
-			__call = function(self, segment)
-				if not segment then
-					segment = {}
-				end
-				segment.buffer = newbuffer()
-				buffer.__concat(self, segment)
-				return segment
-			end,
-		}
-
-		function newbuffer()
-			return setmetatable({ length = 0 }, buffer)
-		end
-
-		function newsegments()
-			return setmetatable({ length = 0 }, segments)
-		end
-
-	end
-
+	---@param text string
+	---@return table, table, number @`segments`, `ignore`, `length`
 	local function createsegments(text)
 
-		local segments = newsegments()
-		local segment = segments()
-
-		local i = 0
 		local len = strlen(text)
-		local skip = 0
-		local level = 0
+		local index = 0
+		local segments = {}
+		local ignore = {}
+		local pos = 1
+		local openFrom, openTo
+		local closeFrom, closeTo
 
-		local chr
-		local chr2
-		local seq
-		local split
+		repeat
 
-		while i < len do
+			openFrom, openTo = strfind(text, "|c", pos, true)
 
-			i = i + 1
-			chr = strsub(text, i, i)
+			if openFrom then
 
-			repeat
-
-				if chr == "|" then
-					if i == len then
-						break
-					end
-					chr2 = strsub(text, i + 1, i + 1)
-					if chr2 == "|" then
-						break
-					end
-					seq = sequences[chr2]
-					if not seq then
-						break
-					end
-					local plevel = level
-					if seq == true or chr2 == "c" then
-						if chr2 == "H" then
-							level = level + 2
-						else
-							level = level + 1
-						end
-					elseif level > 0 then
-						level = level - 1
-					end
-					if seq ~= true then
-						skip = seq
-					end
-					if plevel == 0 or level == 0 then
-						segment = segments()
-					end
-					break
+				if index == 0 and openFrom > 1 then
+					index = index + 1
+					segments[index] = strsub(text, 1, openFrom - 1)
 				end
 
-				if level > 0 then
-					break
+				if closeTo and not (pos > openFrom - 1) then
+					index = index + 1
+					segments[index] = strsub(text, pos, openFrom - 1)
 				end
 
-				if skip > 0 then
-					skip = skip - 1
-					if skip == 0 then
-						segment = segments()
+				pos = openTo + 1
+
+				if openTo then
+					closeFrom, closeTo = strfind(text, "|r", pos, true)
+
+					if closeTo then
+						pos = closeTo + 1
+
+						index = index + 1
+						segments[index] = strsub(text, openFrom, closeTo)
+						ignore[index] = true
 					end
-					break
 				end
 
-				if chr == " " then
-					split = true
-					segment = segments()
-					break
-				end
+			elseif not (pos > len) then
 
-			until true
+				index = index + 1
+				segments[index] = strsub(text, pos)
 
-			if skip == 0 and level == 0 and CEL.unicodeEmotes[chr] then
-				segment = segments()
-				split = true
 			end
 
-			segment.buffer(chr)
+		until not openFrom
 
-			if split then
-				split = false
-				segment = segments()
-			end
+		return segments, ignore, index
 
-		end
-
-		return segments
-
-	end
-
-	function StringBuffer()
-		return newbuffer()
 	end
 
 	function SafeSplit(text)
@@ -337,17 +250,15 @@ do
 	end
 
 	function SafeReplace(text, pattern, replacement)
-		local segments = createsegments(text)
-		local result = newbuffer()
-		for i = 1, segments.length do
+		local segments, ignore, count = createsegments(text)
+		for i = 1, count do
 			local segment = segments[i]
-			local buffer = table.concat(segment.buffer, "")
-			if segment.buffer[1] ~= "|" or segment.buffer[2] == "|" then
-				buffer = buffer:gsub(pattern, replacement, 1)
+			if not ignore[i] then
+				segment = segment:gsub(pattern, replacement)
 			end
-			result(buffer)
+			segments[i] = segment
 		end
-		return table.concat(result, "")
+		return table.concat(segments, "")
 	end
 
 end
@@ -379,9 +290,6 @@ CEL.emoteMetatable = CEL.emoteMetatable or {
 
 ---@type table<function, table<string, ChatEmotesLib-1.0_SearchCache>>
 CEL.emoteSearchCache = CEL.emoteSearchCache or {}
-
----@type table<string, ChatEmotesLib-1.0_Emote>
-CEL.emoteWordCache = CEL.emoteWordCache or {}
 
 ---@param customFilter function
 ---@param name string
@@ -504,7 +412,7 @@ local function ProcessPackageEmotes(package, path, emotes)
 					icons[0] = icons[0] + 1
 					icons[icons[0]] = emote
 					local unicode = emote.unicode
-					if unicode and strbyte(unicode) > 255 then
+					if unicode and strbyteutf8(unicode) > 255 then
 						unicodeEmotes[unicode] = emote
 					end
 				end
@@ -618,6 +526,7 @@ function CEL.GetEmoteByUnicode(text)
 end
 
 ---@param text string
+---@return table, table, number @`segments`, `ignore`, `length`
 function CEL.SplitText(text)
 	return SafeSplit(text)
 end
@@ -629,48 +538,150 @@ function CEL.ReplaceText(text, pattern, replacement)
 	return SafeReplace(text, pattern, replacement)
 end
 
----@param word string
+---@param text string
 ---@param height? number
 ---@param links? boolean
----@return string|nil, ChatEmotesLib-1.0_Emote|nil, ChatEmotesLib-1.0_Emote[]|nil
-local function ReplaceEmoteInWord(word, height, links)
-	if not word or strlen(word) == 0 then
+---@param maxReplacements? number
+---@return string|nil, number|nil, ChatEmotesLib-1.0_Emote[]|nil, ChatEmotesLib-1.0_Emote[]|nil
+local function ReplaceEmotesInText(text, height, links, maxReplacements)
+
+	if not text or text == "" then
 		return
 	end
-	local cache = CEL.emoteWordCache[word]
-	if cache ~= nil then
-		return cache
-	end
-	local emote = GetEmoteByUnicode(word)
-	if emote then
-		local newWord = CEL.SafeReplace(word, nil, emote, height, links)
-		CEL.emoteWordCache[word] = newWord
-		return newWord, nil, emote
-	end
-	local emotePattern
-	for i = 1, CEL.emotePatterns[0] do
-		emotePattern = CEL.emotePatterns[i]
-		for raw, emoteName in word:gmatch(emotePattern) do
-			emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless)
-			if emote then
-				local newWord = CEL.SafeReplace(word, raw, emote, height, links)
-				CEL.emoteWordCache[word] = newWord
-				return newWord, emote
+
+	local replaced = 0
+	local replacedEmotes
+	local replacedUnicodeEmotes
+
+	local pos = 1
+	local emoteFrom, emoteTo
+
+	repeat
+
+		local firstFrom, firstTo
+
+		for i = 1, CEL.emotePatterns[0] do
+
+			local emotePattern = CEL.emotePatterns[i]
+			emoteFrom, emoteTo = strfind(text, emotePattern, pos)
+
+			if emoteFrom then
+
+				if not firstFrom or firstFrom > emoteFrom then
+					firstFrom, firstTo = emoteFrom, emoteTo
+				end
+
 			end
+
 		end
-	end
-	for i = 1, CEL.emotePatternsAggressive[0] do
-		emotePattern = CEL.emotePatternsAggressive[i]
-		for raw, emoteName in word:gmatch(emotePattern) do
-			emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameName)
-			if emote then
-				local newWord = CEL.SafeReplace(word, raw, emote, height, links)
-				CEL.emoteWordCache[word] = newWord
-				return newWord, emote
+
+		if not firstFrom then
+			break
+		end
+
+		if firstFrom then
+			pos = firstFrom
+		end
+
+		for i = 1, CEL.emotePatterns[0] do
+
+			local customFilter = i == 1 and CEL.filter.sameNameCaseless or CEL.filter.sameName -- we know that the first pattern uses colons so the case check can be lenient, meanwhile the plain words needs same case check to succeed
+			local emotePattern = CEL.emotePatterns[i]
+			emoteFrom, emoteTo = strfind(text, emotePattern, pos)
+
+			if emoteFrom and firstTo >= emoteFrom then
+
+				local subText = strsub(text, emoteFrom, emoteTo)
+				local emote = CEL.GetEmoteSearch(subText, customFilter)
+
+				if emote then
+
+					local emoteText = CEL.SafeReplace(subText, nil, emote, height, links)
+					subText = { strsub(text, 1, emoteFrom - 1), emoteText, strsub(text, emoteTo + 1) }
+					text = table.concat(subText, "")
+					emoteTo = emoteFrom + strlen(emoteText) - 1
+
+					if not replacedEmotes then
+						replacedEmotes = { [0] = 0 }
+					end
+					replacedEmotes[0] = replacedEmotes[0] + 1
+					replacedEmotes[replacedEmotes[0]] = emote
+
+					replaced = replaced + 1
+					if maxReplacements and maxReplacements - replaced == 0 then
+						return text
+					end
+
+				end
+
+				pos = emoteTo + 1
+
 			end
+
 		end
+
+	until false
+
+	pos = 1
+	emoteFrom, emoteTo = nil, nil
+
+	repeat
+
+		emoteFrom, emoteTo = strfind(text, CEL.emoteUnicodePattern, pos)
+
+		if emoteFrom then
+
+			local subText = strsub(text, emoteFrom, emoteTo)
+			local emote = GetEmoteByUnicode(subText)
+
+			if emote then
+
+				local emoteText = CEL.SafeReplace(subText, nil, emote, height, links)
+				subText = { strsub(text, 1, emoteFrom - 1), emoteText, strsub(text, emoteTo + 1) }
+				text = table.concat(subText, "")
+				emoteTo = emoteFrom + strlen(emoteText) - 1
+
+				if not replacedUnicodeEmotes then
+					replacedUnicodeEmotes = { [0] = 0 }
+				end
+				replacedUnicodeEmotes[0] = replacedUnicodeEmotes[0] + 1
+				replacedUnicodeEmotes[replacedUnicodeEmotes[0]] = emote
+
+				replaced = replaced + 1
+				if maxReplacements and maxReplacements - replaced == 0 then
+					return text
+				end
+
+			end
+
+			pos = emoteTo + 1
+
+		end
+
+	until not emoteFrom
+
+	if replaced == 0 then
+		return
 	end
-	CEL.emoteWordCache[word] = false
+
+	return text, replaced, replacedEmotes, replacedUnicodeEmotes
+
+	-- local emote = GetEmoteByUnicode(text)
+	-- if emote then
+	-- 	local newWord = CEL.SafeReplace(text, nil, emote, height, links)
+	-- 	return newWord, nil, emote
+	-- end
+	-- local emotePattern
+	-- for i = 1, CEL.emotePatterns[0] do
+	-- 	emotePattern = CEL.emotePatterns[i]
+	-- 	for raw, emoteName in text:gmatch(emotePattern) do
+	-- 		emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless or CEL.filter.sameName)
+	-- 		if emote then
+	-- 			local newWord = CEL.SafeReplace(text, raw, emote, height, links)
+	-- 			return newWord, emote
+	-- 		end
+	-- 	end
+	-- end
 end
 
 ---@param text string
@@ -678,44 +689,52 @@ end
 ---@param useLinks? boolean
 ---@param usedEmotes? boolean
 ---@return string|nil, ChatEmotesLib-1.0_Emote[]
-function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes)
-	local segments = SafeSplit(text)
-	local length = segments.length
+function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes, maxReplacements)
+	local segments, ignore, length = SafeSplit(text)
 	if length == 0 then
 		return
 	end
-	local results = StringBuffer()
+	if not maxReplacements then
+		maxReplacements = 59 -- 60 and above will result in malformed trailing emotes in the chat frame
+	end
 	local replaced
 	local emotes
 	for i = 1, length do
-		local segment = segments[i]
-		local buffer = table.concat(segment.buffer, "")
-		if segment.buffer[1] ~= "|" or segment.buffer[2] == "|" then
-			local newBuffer, replacedEmote, replacedUnicodeEmote = ReplaceEmoteInWord(buffer, height, useLinks)
-			if newBuffer then
+		if not ignore[i] then
+			local newSegment, numReplaced, replacedEmotes, replacedUnicodeEmotes = ReplaceEmotesInText(segments[i], height, useLinks, maxReplacements)
+			if newSegment then
 				replaced = true
+				segments[i] = newSegment
 				if usedEmotes then
 					if not emotes then
 						emotes = { [0] = 0 }
 					end
-					if replacedEmote then
-						emotes[0] = emotes[0] + 1
-						emotes[emotes[0]] = replacedEmote
+					if replacedEmotes then
+						for j = 1, replacedEmotes[0] do
+							emotes[0] = emotes[0] + 1
+							emotes[emotes[0]] = replacedEmotes[j]
+						end
 					end
-					if replacedUnicodeEmote then
-						emotes[0] = emotes[0] + 1
-						emotes[emotes[0]] = replacedUnicodeEmote
+					if replacedUnicodeEmotes then
+						for j = 1, replacedUnicodeEmotes[0] do
+							emotes[0] = emotes[0] + 1
+							emotes[emotes[0]] = replacedUnicodeEmotes[j]
+						end
 					end
 				end
-				buffer = newBuffer
+				if numReplaced then
+					maxReplacements = maxReplacements - numReplaced
+					if maxReplacements == 0 then
+						break
+					end
+				end
 			end
 		end
-		results(buffer)
 	end
-	if not replaced or results.length == 0 then
+	if not replaced then
 		return
 	end
-	return table.concat(results, ""), emotes
+	return table.concat(segments, ""), emotes
 end
 
 ---@param text string
@@ -763,7 +782,7 @@ local function randomString(maxLen, minLen)
 	while i < len do
 		i = i + 1
 		if UTF8 and random(1, 10) == 1 then
-			buffer[i] = strchar(random(127988, 128512))
+			buffer[i] = strcharutf8(random(127988, 128512))
 		else
 			buffer[i] = strchar(random(32, 122))
 		end

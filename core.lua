@@ -32,6 +32,7 @@ local addonButton ---@type ChatEmotesUIButton
 local addonConfigFrame ---@type ChatEmotesUIConfigMixin
 
 local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 132048, 16, 10, -1, 0, 16, 16, 4, 13, 0, 16)
+local EMOTE_AC_CHAR = "#"
 
 ---@class ChatEmoteStatistics
 ---@field public sent? number|nil
@@ -260,7 +261,7 @@ local function GetPosition(text, pos)
 		if chr == " " then
 			from = i + 1
 			break
-		elseif chr == CEL.emoteWrapper then
+		elseif chr == EMOTE_AC_CHAR then
 			sfrom = i
 			from = i + 1
 			break
@@ -271,7 +272,7 @@ local function GetPosition(text, pos)
 		if chr == " " then
 			to = i - 1
 			break
-		elseif chr == CEL.emoteWrapper then
+		elseif chr == EMOTE_AC_CHAR then
 			sto = i
 			to = i - 1
 			break
@@ -1501,3 +1502,118 @@ function addon:ToggleConfig()
 	end
 	addonConfigFrame:SetShown(not addonConfigFrame:IsShown())
 end
+
+--[=[
+
+-- Log channel messages using:
+-- /dump EmotesLibLogChannel(500)
+
+-- Parse logged messages using:
+-- /dump EmotesLibLogChannelTest(0.5)
+
+-- Parse one specific message using:
+-- /dump EmotesLibLogChannelTestOne(9)
+
+do
+	local f, m, x, i, p, d = CreateFrame("Frame"), 100, nil, nil, nil, nil
+	f:SetScript("OnEvent", function (_, event, ...)
+		if not x then
+			x = ChatEmotesDB.DEBUG
+			if not x then
+				x = {}
+				ChatEmotesDB.DEBUG = x
+			end
+			i = #x
+			p = x[i]
+		end
+		i = i + 1
+		d = debugprofilestop()
+		local t = { index = i, after = p and d - p.after or 0, event = event, args = { ... } }
+		x[i] = t
+		p = t
+		print(format("%d/%d events...", i, m))
+		if i >= m then
+			f:UnregisterAllEvents()
+			print("Done!")
+		end
+	end)
+	_G.EmotesLibLogChannel = function(maxItems)
+		m = maxItems or m
+		f:RegisterEvent("CHAT_MSG_CHANNEL")
+	end
+end
+
+do
+	local CEL_ReplaceEmotesInText = CEL.ReplaceEmotesInText
+	local HEIGHT
+	local function DebugChatMessageFilter(self, event, text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, ...)
+		if not HEIGHT then
+			HEIGHT = GetHeightForChatFrame(self)
+		end
+		local a = debugprofilestop()
+		local newText, usedEmotes = CEL_ReplaceEmotesInText(text, HEIGHT, DB.options.emoteHover, true)
+		local d = debugprofilestop() - a
+		if newText then
+			return d, false, newText, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, ...
+		end
+		return d
+	end
+	local dd
+	local x, t, i, e
+	local sum, num
+	local function tick()
+		i = i + 1
+		e = x[i]
+		if not e then
+			if t then
+				t:Cancel()
+				t = nil
+			end
+			print("Done!")
+			return
+		end
+		local result = { DebugChatMessageFilter(DEFAULT_CHAT_FRAME, e.event, unpack(e.args)) } ---@diagnostic disable-line: undefined-global
+		local d, status, newText, playerName = result[1], result[2], result[3], result[4]
+		sum, num = sum + d, num + 1
+		local ol = format("[%d] %.2f (~ %.2f)", i, d, sum/num)
+		if status ~= nil then
+			print(ol, playerName, newText)
+		else
+			print(ol)
+		end
+		if dd > 0 and d >= dd then
+			if t then
+				t:Cancel()
+				t = nil
+			end
+			print("Debug!")
+		end
+	end
+	_G.EmotesLibLogChannelTest = function(debugMs, delayBetween, startAt)
+		x = ChatEmotesDB.DEBUG
+		if not x then
+			return
+		end
+		if t then
+			t:Cancel()
+			t = nil
+		end
+		dd = debugMs or 10
+		delayBetween = delayBetween or 0
+		i = startAt or 0
+		sum, num = 0, 0
+		t = C_Timer.NewTicker(delayBetween, tick)
+	end
+	_G.EmotesLibLogChannelTestOne = function(index)
+		x = ChatEmotesDB.DEBUG
+		if not x then
+			return
+		end
+		dd = 0
+		i = (index or 1) - 1
+		sum, num = 0, 0
+		tick()
+	end
+end
+
+--]=]
