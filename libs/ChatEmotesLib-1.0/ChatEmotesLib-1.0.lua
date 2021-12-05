@@ -666,22 +666,6 @@ local function ReplaceEmotesInText(text, height, links, maxReplacements)
 
 	return text, replaced, replacedEmotes, replacedUnicodeEmotes
 
-	-- local emote = GetEmoteByUnicode(text)
-	-- if emote then
-	-- 	local newWord = CEL.SafeReplace(text, nil, emote, height, links)
-	-- 	return newWord, nil, emote
-	-- end
-	-- local emotePattern
-	-- for i = 1, CEL.emotePatterns[0] do
-	-- 	emotePattern = CEL.emotePatterns[i]
-	-- 	for raw, emoteName in text:gmatch(emotePattern) do
-	-- 		emote = CEL.GetEmoteSearch(emoteName, CEL.filter.sameNameCaseless or CEL.filter.sameName)
-	-- 		if emote then
-	-- 			local newWord = CEL.SafeReplace(text, raw, emote, height, links)
-	-- 			return newWord, emote
-	-- 		end
-	-- 	end
-	-- end
 end
 
 ---@param text string
@@ -693,9 +677,6 @@ function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes, maxReplacem
 	local segments, ignore, length = SafeSplit(text)
 	if length == 0 then
 		return
-	end
-	if not maxReplacements then
-		maxReplacements = 59 -- 60 and above will result in malformed trailing emotes in the chat frame
 	end
 	local replaced
 	local emotes
@@ -722,7 +703,7 @@ function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes, maxReplacem
 						end
 					end
 				end
-				if numReplaced then
+				if numReplaced and maxReplacements then
 					maxReplacements = maxReplacements - numReplaced
 					if maxReplacements == 0 then
 						break

@@ -33,6 +33,7 @@ local addonConfigFrame ---@type ChatEmotesUIConfigMixin
 
 local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 132048, 16, 10, -1, 0, 16, 16, 4, 13, 0, 16)
 local EMOTE_AC_CHAR = "#"
+local MAX_EMOTES_PER_MESSAGE = 59 -- 60 and above will result in malformed trailing emotes in the chat frame
 
 ---@class ChatEmoteStatistics
 ---@field public sent? number|nil
@@ -239,7 +240,7 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 		return
 	end
 	local height = GetHeightForChatFrame(self)
-	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, DB.options.emoteHover, true)
+	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, DB.options.emoteHover, true, MAX_EMOTES_PER_MESSAGE)
 	if newText then
 		if prevLineID ~= lineID then
 			prevLineID = lineID
