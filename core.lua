@@ -16,6 +16,8 @@ local strlenutf8 = _G.strlenutf8
 ---@field public OPTIONS string
 ---@field public EMOTE_SCALE string
 ---@field public EMOTE_HOVER string
+---@field public ENABLE_AUTOCOMPLETE string
+---@field public AUTOCOMPLETE_CHAR string
 
 ---@class ChatEmotesNamespace
 ---@field public NewLocale function
@@ -32,8 +34,8 @@ local addonButton ---@type ChatEmotesUIButton
 local addonConfigFrame ---@type ChatEmotesUIConfigMixin
 
 local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 132048, 16, 10, -1, 0, 16, 16, 4, 13, 0, 16)
-local EMOTE_AC_CHAR = "#"
 local MAX_EMOTES_PER_MESSAGE = 59 -- 60 and above will result in malformed trailing emotes in the chat frame
+local INVALID_AUTOCOMPLETE_CHARS = { [" "] = true, [":"] = true, ["|"] = true, ["/"] = true, ["-"] = true }
 
 ---@class ChatEmoteStatistics
 ---@field public sent? number|nil
@@ -42,6 +44,8 @@ local MAX_EMOTES_PER_MESSAGE = 59 -- 60 and above will result in malformed trail
 ---@class ChatEmotesDB_Options
 ---@field public emoteScale number
 ---@field public emoteHover boolean
+---@field public enableAutoComplete boolean
+---@field public autoCompleteChar string
 
 ---@class ChatEmotesDB_Position
 ---@field public point string
@@ -63,6 +67,8 @@ local defaults = {
 	options = {
 		emoteScale = 1.25,
 		emoteHover = true,
+		enableAutoComplete = true,
+		autoCompleteChar = "#",
 	},
 	position = {
 		point = "LEFT",
@@ -250,197 +256,528 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 	end
 end
 
-local autoCompleteCache = {}
+---@type AutoCompleteFrame
+local AutoComplete do
 
-local function GetPosition(text, pos)
-	local from = 1
-	local to = strlenutf8(text)
-	local sfrom
-	local sto
-	for i = pos, 1, -1 do
-		local chr = text:sub(i, i)
-		if chr == " " then
-			from = i + 1
-			break
-		elseif chr == EMOTE_AC_CHAR then
-			sfrom = i
-			from = i + 1
-			break
+	local AUTOCOMPLETE_MAX_BUTTONS = AUTOCOMPLETE_MAX_BUTTONS ---@diagnostic disable-line: undefined-global
+	local AUTOCOMPLETE_DEFAULT_Y_OFFSET = AUTOCOMPLETE_DEFAULT_Y_OFFSET ---@diagnostic disable-line: undefined-global
+	local PRESS_TAB = PRESS_TAB ---@diagnostic disable-line: undefined-global
+
+	local BUTTON_FORMAT = "|cffbbbbbb%s|r"
+	local BUTTON_FORMAT_CONTINUED = "|cffbbbbbb%s (+%d)|r"
+	local BUTTON_OFFSET = 10
+	local BUTTON_WIDTH = 120
+	local BUTTON_HEIGHT = 14
+	local BUTTON_PADDING_X = 30
+	local BUTTON_PADDING_Y = 35 - 10
+
+	local GameFontDisableSmall = GameFontDisableSmall ---@diagnostic disable-line: undefined-global
+	local GameFontNormalSmall = GameFontNormalSmall ---@diagnostic disable-line: undefined-global
+	local GameFontHighlightSmall = GameFontHighlightSmall ---@diagnostic disable-line: undefined-global
+
+	local GameFontDisable = GameFontDisable ---@diagnostic disable-line: undefined-global
+	local GameFontNormal = GameFontNormal ---@diagnostic disable-line: undefined-global
+	local GameFontHighlight = GameFontHighlight ---@diagnostic disable-line: undefined-global
+
+	local GameFontDisableLarge = GameFontDisableLarge ---@diagnostic disable-line: undefined-global
+	local GameFontNormalLarge = GameFontNormalLarge ---@diagnostic disable-line: undefined-global
+	local GameFontHighlightLarge = GameFontHighlightLarge ---@diagnostic disable-line: undefined-global
+
+	---@class AutoCompleteFontPreset
+	---@field public text string
+	---@field public disabled FontString
+	---@field public normal FontString
+	---@field public highlight FontString
+
+	---@type AutoCompleteFontPreset[]
+	local FontObjectPresets = {
+		{
+			text = SMALL, ---@diagnostic disable-line: undefined-global
+			disabled = GameFontDisableSmall,
+			normal = GameFontNormalSmall,
+			highlight = GameFontHighlightSmall,
+		},
+		{
+			text = DEFAULT, ---@diagnostic disable-line: undefined-global
+			disabled = GameFontDisable,
+			normal = GameFontNormal,
+			highlight = GameFontHighlight,
+		},
+		{
+			text = LARGE, ---@diagnostic disable-line: undefined-global
+			disabled = GameFontDisableLarge,
+			normal = GameFontNormalLarge,
+			highlight = GameFontHighlightLarge,
+		},
+	}
+	local DefaultFontObjectPreset = FontObjectPresets[2]
+
+	---@class AutoCompleteFrame : Frame
+	---@field public Instructions FontString
+	---@field public Buttons AutoCompleteButton[]
+	---@field public editBox ChatFrameEditBox
+	---@field public attachPoint string
+	---@field public results AutoCompleteResult[]
+	---@field public numResults number
+	---@field public fontObjectPreset AutoCompleteFontPreset
+	---@field public disallowAutoComplete boolean
+	---@field public selectedIndex number
+
+	---@class AutoCompleteButton : Button
+	---@field public Text FontString
+	---@field public result AutoCompleteResult
+
+	---@class AutoCompleteResult : table
+	---@field public priority number
+	---@field public name string
+	---@field public emote ChatEmotesLib-1.0_Emote
+	---@field public from number
+	---@field public to number
+
+	AutoComplete = CreateFrame("Frame", "VladsChatEmotesAutoCompleteFrame", UIParent, "TooltipBackdropTemplate")
+
+	---@param text string
+	---@param pos number
+	local function GetPosition(text, pos)
+		local from = 1
+		local to = strlenutf8(text)
+		local sfrom
+		local sto
+		local customChar = DB.options.autoCompleteChar
+		for i = pos, 1, -1 do
+			local chr = strsub(text, i, i)
+			if chr == " " then
+				from = i + 1
+				break
+			elseif chr == customChar then
+				sfrom = i
+				from = i + 1
+				break
+			end
+		end
+		for i = from, to do
+			local chr = strsub(text, i, i)
+			if chr == " " then
+				to = i - 1
+				break
+			elseif chr == customChar then
+				sto = i
+				to = i - 1
+				break
+			end
+		end
+		return from, to, sfrom or from, sto or to
+	end
+
+	---@param a AutoCompleteResult
+	---@param b AutoCompleteResult
+	local function SortAutoCompleteResults(a, b)
+		if a.priority == b.priority then
+			return a.name < b.name
+		end
+		return a.priority < b.priority
+	end
+
+	---@param self AutoCompleteFrame
+	---@param text string
+	---@param cursorPosition number
+	local function AutoComplete_UpdateResults(self, text, cursorPosition)
+		local results = self.results
+		wipe(results)
+		local from, to, sfrom, sto = GetPosition(text, cursorPosition)
+		local aggressiveMatched = sfrom - from == 0
+		if aggressiveMatched then
+			return
+		end
+		local len = to - from
+		if len < 1 then
+			return
+		end
+		local query = strsub(text, from, to)
+		local emotes, weights = CEL.GetEmotesSearch(query, aggressiveMatched and CEL.filter.nameFindTextStartsWithCaseless or CEL.filter.nameFindTextCaseless)
+		if not emotes then
+			return
+		end
+		if emotes[2] then
+			CEL.SortEmotes(emotes, weights)
+		end
+		local index = 0
+		for i = 1, emotes[0] do
+			local emote = emotes[i]
+			if not emote.ignoreSuggestion then
+				local priority = emote.name:find(query) or (100 + (emote.name:lower():find(query:lower()) or 99))
+				index = index + 1
+				results[index] = {
+					priority = priority,
+					name = emote.name,
+					emote = emote,
+					from = sfrom,
+					to = sto,
+				}
+			end
+		end
+		if not results[1] then
+			return
+		elseif results[2] then
+			table.sort(results, SortAutoCompleteResults)
 		end
 	end
-	for i = from, to do
-		local chr = text:sub(i, i)
-		if chr == " " then
-			to = i - 1
-			break
-		elseif chr == EMOTE_AC_CHAR then
-			sto = i
-			to = i - 1
-			break
+
+	---@param self AutoCompleteButton
+	local function AutoCompleteButton_OnClick(self)
+		local editBox = AutoComplete.editBox
+		local result = self.result
+		local emote = result.emote
+		local text = editBox:GetText()
+		local prefix = strsub(text, 1, result.from - 1)
+		local suffix = strsub(text, result.to + 1)
+		local updatedText = format("%s%s%s", prefix, emote.name, suffix)
+		if not editBox:HasFocus() then
+			ChatEdit_ActivateChat(editBox)
+		end
+		editBox:SetText(updatedText)
+		editBox:SetCursorPosition(strlenutf8(updatedText) - strlenutf8(suffix))
+	end
+
+	do
+
+		AutoComplete:Hide()
+		AutoComplete:EnableMouse(true)
+		AutoComplete:SetSize(5, 5)
+		AutoComplete:SetPoint("CENTER")
+
+		AutoComplete.Instructions = AutoComplete:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+		AutoComplete.Instructions:SetPoint("BOTTOMLEFT", 15, 10)
+		AutoComplete.Instructions:SetFormattedText(BUTTON_FORMAT, PRESS_TAB) ---@diagnostic disable-line: redundant-parameter
+
+		AutoComplete.Buttons = {}
+
+		do
+			for i = 1, AUTOCOMPLETE_MAX_BUTTONS do
+				local prevButton = AutoComplete.Buttons[i - 1]
+				local button = CreateFrame("Button", format("$parentButton%d", i), AutoComplete, "AutoCompleteButtonTemplate") ---@type AutoCompleteButton
+				button.Text = _G[format("%sText", button:GetName())]
+				button:Hide()
+				button:SetSize(BUTTON_WIDTH, BUTTON_HEIGHT)
+				button:SetScript("OnClick", AutoCompleteButton_OnClick)
+				if not prevButton then
+					button:SetPoint("TOPLEFT", 0, -BUTTON_OFFSET)
+				else
+					button:SetPoint("TOPLEFT", prevButton, "BOTTOMLEFT", 0, 0)
+				end
+				AutoComplete.Buttons[i] = button
+			end
+		end
+
+		AutoComplete.results = {}
+
+	end
+
+	---@param editBox ChatFrameEditBox
+	function AutoComplete:ShowDropDown(editBox, userInput)
+		if not editBox then
+			return
+		end
+		if userInput and self.disallowAutoComplete then
+			self:HideDropDown(editBox, true)
+			return
+		end
+		local text = editBox:GetText()
+		if not text or text == "" then
+			self:HideDropDown(editBox, true)
+			return
+		end
+		local cursorPosition = editBox:GetUTF8CursorPosition()
+		if cursorPosition > strlenutf8(text) then
+			self:HideDropDown(editBox, true)
+			return
+		end
+		self:SetParent(editBox)
+		if self.editBox ~= editBox then
+			self.altArrowKeyMode = editBox:GetAltArrowKeyMode()
+		end
+		editBox:SetAltArrowKeyMode(false)
+		local attachPoint
+		local _, maxHeight = self:GetBounds()
+		if editBox:GetBottom() - maxHeight <= AUTOCOMPLETE_DEFAULT_Y_OFFSET + BUTTON_OFFSET then
+			attachPoint = "ABOVE"
+		else
+			attachPoint = "BELOW"
+		end
+		if self.editBox ~= editBox or self.attachPoint ~= attachPoint then
+			if attachPoint == "ABOVE" then
+				self:ClearAllPoints()
+				self:SetPoint("BOTTOMLEFT", editBox, "TOPLEFT", 0, -AUTOCOMPLETE_DEFAULT_Y_OFFSET)
+			elseif attachPoint == "BELOW" then
+				self:ClearAllPoints()
+				self:SetPoint("TOPLEFT", editBox, "BOTTOMLEFT", 0, AUTOCOMPLETE_DEFAULT_Y_OFFSET)
+			end
+			self.attachPoint = attachPoint
+		end
+		self.editBox = editBox
+		self:UpdateAll()
+	end
+
+	---@param editBox ChatFrameEditBox
+	function AutoComplete:HideDropDown(editBox, force)
+		if not force and self.editBox ~= editBox then
+			return
+		end
+		if not editBox then
+			editBox = self.editBox
+		end
+		if not editBox then
+			return
+		end
+		if self.altArrowKeyMode ~= nil then
+			editBox:SetAltArrowKeyMode(self.altArrowKeyMode)
+			self.altArrowKeyMode = nil
+		end
+		self:SetSelectedIndex(1)
+		self:Hide()
+		self.editBox = nil
+	end
+
+	function AutoComplete:UpdateAll()
+		self:UpdateResults()
+		self:DisplayResults()
+	end
+
+	function AutoComplete:UpdateResults()
+		local editBox = self.editBox
+		if not editBox then
+			return
+		end
+		local text = editBox:GetText()
+		local cursorPosition = editBox:GetUTF8CursorPosition()
+		AutoComplete_UpdateResults(self, text, cursorPosition)
+	end
+
+	function AutoComplete:DisplayResults()
+		local results = self.results
+		local totalReturns = #results
+		local numResults = min(totalReturns, AUTOCOMPLETE_MAX_BUTTONS)
+		local maxWidth = BUTTON_WIDTH
+		for i = 1, numResults do
+			local result = self.results[i]
+			local emote = result.emote
+			local button = self.Buttons[i]
+			button.result = result
+			button:SetFormattedText("%s %s", emote.markup, emote.name) ---@diagnostic disable-line: redundant-parameter
+			maxWidth = max(maxWidth, button.Text:GetStringWidth() + BUTTON_PADDING_X)
+			button:Show()
+		end
+		for i = numResults + 1, AUTOCOMPLETE_MAX_BUTTONS do
+			self.Buttons[i]:Hide()
+		end
+		AutoComplete.Instructions:SetFormattedText(totalReturns > AUTOCOMPLETE_MAX_BUTTONS and BUTTON_FORMAT_CONTINUED or BUTTON_FORMAT, PRESS_TAB, totalReturns - numResults) ---@diagnostic disable-line: redundant-parameter
+		self.numResults = numResults
+		local selectedIndex = self:GetSelectedIndex()
+		if not selectedIndex or selectedIndex > numResults then
+			self:SetSelectedIndex(1)
+		end
+		if numResults > 0 then
+			self:UpdateSize()
+			self:Show()
+			C_Timer.After(0.05, function() self:UpdateSize() end) -- TODO
+		else
+			self:Hide()
 		end
 	end
-	return from, to, sfrom or from, sto or to
-end
 
-local function SortAutoCompleteCache(a, b)
-	if a.priority == b.priority then
-		return a.name < b.name
-	end
-	return a.priority < b.priority
-end
-
----@param text string
----@param maxResults number
----@param utf8Position number
----@param allowFullMatch boolean
----The varargs contain the include/exclude or other provided arguments.
-local function AutoCompleteSource(text, maxResults, utf8Position, allowFullMatch, ...)
-	wipe(autoCompleteCache)
-	local from, to, sfrom, sto = GetPosition(text, utf8Position)
-	local aggressiveMatched = sfrom - from == 0
-	if aggressiveMatched then
-		return autoCompleteCache
-	end
-	local len = to - from
-	if len < 1 then
-		return autoCompleteCache
-	end
-	local query = text:sub(from, to)
-	local emotes, weights = CEL.GetEmotesSearch(query, aggressiveMatched and CEL.filter.nameFindTextStartsWithCaseless or CEL.filter.nameFindTextCaseless)
-	if not emotes then
-		return autoCompleteCache
-	end
-	if emotes[2] then
-		CEL.SortEmotes(emotes, weights)
-	end
-	local index = 0
-	for i = 1, emotes[0] do
-		local emote = emotes[i]
-		if not emote.ignoreSuggestion then
-			local priority = emote.name:find(query) or (100 + (emote.name:lower():find(query:lower()) or 99))
-			index = index + 1
-			autoCompleteCache[index] = {
-				name = emote.name,
-				priority = priority,
-				chatemote = emote,
-				chatemotefrom = sfrom,
-				chatemoteto = sto,
-			}
-		end
-	end
-	if not autoCompleteCache[1] then
-		return autoCompleteCache
-	elseif autoCompleteCache[2] then
-		table.sort(autoCompleteCache, SortAutoCompleteCache)
-	end
-	for i = 1, #autoCompleteCache do
-		local result = autoCompleteCache[i]
-		result.priority = 1
-	end
-	for i = maxResults + 1, #autoCompleteCache do
-		autoCompleteCache[i] = nil
-	end
-	return autoCompleteCache
-end
-
----@param self ChatFrameEditBox
----@param newText string
----@param result table
----@param name string
-local function AutoCompleteAccept(self, newText, result, name)
-	local emote = result.chatemote ---@type ChatEmotesLib-1.0_Emote
-	if not emote then
-		return true
-	end
-	local text = self:GetText()
-	local prefix = text:sub(1, result.chatemotefrom - 1)
-	local suffix = text:sub(result.chatemoteto + 1)
-	local updatedText = format("%s%s%s", prefix, emote.name, suffix)
-	self:SetText(updatedText)
-	self:SetCursorPosition(strlenutf8(updatedText) - strlenutf8(suffix))
-	return true
-end
-
-local origAutoCompletFuncs = {}
-
----@param self ChatFrameEditBox
-local function CacheOrigAutoCompletFuncs(self)
-	local cache = origAutoCompletFuncs[self]
-	if not cache then
-		cache = {}
-		origAutoCompletFuncs[self] = cache
-	end
-	if self.autoCompleteSource ~= AutoCompleteSource then
-		cache.autoCompleteSource = self.autoCompleteSource
-	end
-	if self.customAutoCompleteFunction ~= AutoCompleteAccept then
-		cache.customAutoCompleteFunction = self.customAutoCompleteFunction
-	end
-	if cache.autoCompleteSource then
-		return cache
-	end
-	self.autoCompleteSource = AutoCompleteSource
-	self.customAutoCompleteFunction = AutoCompleteAccept
-	return cache
-end
-
----@param self ChatFrameEditBox
-local function CacheOrigAutoCompletFuncsRestore(self)
-	local cache = CacheOrigAutoCompletFuncs(self)
-	self.autoCompleteSource = cache.autoCompleteSource
-	self.customAutoCompleteFunction = cache.customAutoCompleteFunction
-end
-
----@param self ChatFrameEditBox
-local function AutoCompleteEditBox_SetAutoCompleteSource(self, source)
-	CacheOrigAutoCompletFuncs(self)
-end
-
----@param self ChatFrameEditBox
-local function AutoCompleteEditBox_SetCustomAutoCompleteFunction(self)
-	CacheOrigAutoCompletFuncs(self)
-end
-
----@param autoCompleteBox Frame
----@param results table
----@param context? string
-local function AutoComplete_UpdateResults(autoCompleteBox, results, context)
-	local self = autoCompleteBox.parent ---@diagnostic disable-line
-	local first = results[1]
-	if not first or not first.chatemote then
-		CacheOrigAutoCompletFuncsRestore(self)
-		return
-	end
-	local totalReturns = #results
-	local numReturns = min(totalReturns, AUTOCOMPLETE_MAX_BUTTONS) ---@diagnostic disable-line: undefined-global
-	for i = 1, numReturns do
-		local button = _G["AutoCompleteButton" .. i] ---@type Button
-		if button:IsEnabled() then
-			local result = button.nameInfo ---@diagnostic disable-line
-			local emote = result.chatemote ---@type ChatEmotesLib-1.0_Emote
-			if emote then
-				button:SetText(format("%s %s", emote.markup, emote.name))
+	function AutoComplete:SetSelectedIndex(index)
+		self.selectedIndex = index
+		for i = 1, AUTOCOMPLETE_MAX_BUTTONS do
+			local button = self.Buttons[i]
+			if i == index then
+				button:LockHighlight()
+			else
+				button:UnlockHighlight()
 			end
 		end
 	end
+
+	function AutoComplete:GetSelectedIndex()
+		return self.selectedIndex
+	end
+
+	function AutoComplete:GetSelected()
+		local index = self.selectedIndex
+		if not index then
+			return
+		end
+		local button = self.Buttons[index]
+		if not button:IsShown() then
+			return
+		end
+		return button
+	end
+
+	---@param editBox ChatFrameEditBox
+	---@param reversed boolean
+	function AutoComplete:OnTab(editBox, reversed)
+		if self.editBox ~= editBox or not self:IsShown() then
+			return
+		end
+		local selectedIndex = self:GetSelectedIndex()
+		if reversed then
+			selectedIndex = selectedIndex - 1
+			if selectedIndex < 1 then
+				selectedIndex = self.numResults
+			end
+		else
+			selectedIndex = selectedIndex + 1
+			if selectedIndex > self.numResults then
+				selectedIndex = 1
+			end
+		end
+		self:SetSelectedIndex(selectedIndex)
+	end
+
+	---@param editBox ChatFrameEditBox
+	function AutoComplete:OnEnter(editBox)
+		if self.editBox ~= editBox or not self:IsShown() then
+			return
+		end
+		local button = self:GetSelected()
+		if not button then
+			return
+		end
+		button:Click()
+		return true
+	end
+
+	---@param editBox ChatFrameEditBox
+	---@param step number
+	function AutoComplete:OnArrow(editBox, step)
+		if self.editBox ~= editBox or not self:IsShown() then
+			return
+		end
+		self:OnTab(editBox, step < 1)
+	end
+
+	function AutoComplete:GetFontObjectPreset()
+		return self.fontObjectPreset
+	end
+
+	---@param fontObjectPreset AutoCompleteFontPreset
+	function AutoComplete:SetFontObjectPreset(fontObjectPreset)
+		if not fontObjectPreset then
+			fontObjectPreset = DefaultFontObjectPreset
+		end
+		if self.fontObjectPreset == fontObjectPreset then
+			return
+		end
+		self.Instructions:SetFontObject(fontObjectPreset.disabled)
+		for _, button in pairs(self.Buttons) do
+			button:SetNormalFontObject(fontObjectPreset.normal)
+			button:SetHighlightFontObject(fontObjectPreset.highlight)
+		end
+		self.Instructions:SetHeight(self.Instructions:GetStringHeight())
+		self.fontObjectPreset = fontObjectPreset
+	end
+
+	---@return number, number, number@`height`, `maxHeight`, `maxWidth`
+	function AutoComplete:GetBounds()
+		local height = max(self.Instructions:GetHeight(), self.Instructions:GetStringHeight())
+		local maxHeight = height
+		local maxWidth = BUTTON_WIDTH
+		for _, button in pairs(self.Buttons) do
+			local buttonHeight = max(button:GetHeight(), button.Text:GetStringHeight())
+			local buttonWidth = max(button:GetWidth(), button.Text:GetStringWidth())
+			if button:IsShown() then
+				height = height + buttonHeight
+				maxWidth = max(maxWidth, buttonWidth + BUTTON_PADDING_X)
+			end
+			maxHeight = maxHeight + buttonHeight
+		end
+		maxWidth = max(maxWidth, max(self.Instructions:GetWidth(), self.Instructions:GetStringWidth()) + BUTTON_PADDING_X)
+		return height, maxHeight, maxWidth
+	end
+
+	function AutoComplete:UpdateSize()
+		local height, _, maxWidth = self:GetBounds()
+		self:SetSize(maxWidth, height + BUTTON_PADDING_Y)
+	end
+
+	AutoComplete:SetFontObjectPreset()
+
 end
 
 ---@param self ChatFrameEditBox
----@param userInput boolean
-local function ChatEditBoxOnTextChanged(self, userInput)
-	if not userInput then
+local function ChatEditBoxOnChanged(self, userInput)
+	if not DB.options.enableAutoComplete then
 		return
 	end
 	local text = self:GetText()
-	if not text then
+	if not text or AutoCompleteBox:IsShown() then ---@diagnostic disable-line: undefined-global
+		AutoComplete:HideDropDown(self)
+	else
+		AutoComplete:ShowDropDown(self, userInput == true)
+	end
+end
+
+---@param self ChatFrameEditBox
+local function ChatEditBoxOnTabPressed(self)
+	if not DB.options.enableAutoComplete then
 		return
 	end
-	CacheOrigAutoCompletFuncs(self)
-	if not self.autoCompleteSource or self.autoCompleteSource == AutoCompleteSource then
-		_G.AutoCompleteEditBox_SetAutoCompleteSource(self, AutoCompleteSource, "chatemote") ---@diagnostic disable-line
-		_G.AutoCompleteEditBox_SetCustomAutoCompleteFunction(self, AutoCompleteAccept) ---@diagnostic disable-line
-		_G.AutoComplete_Update(self, text, self:GetUTF8CursorPosition()) ---@diagnostic disable-line
+	AutoComplete:OnTab(self, IsShiftKeyDown())
+end
+
+---@param self ChatFrameEditBox
+local function ChatEditBoxOnArrow(self, key)
+	if not DB.options.enableAutoComplete then
+		return
 	end
+	if key == "UP" then
+		AutoComplete:OnArrow(self, -1)
+	elseif key == "DOWN" then
+		AutoComplete:OnArrow(self, 1)
+	else
+		ChatEditBoxOnChanged(self)
+	end
+end
+
+---@param self ChatFrameEditBox
+local function ChatEditBoxOnKeyDown(self, key)
+	if not DB.options.enableAutoComplete then
+		return
+	end
+	if key == "BACKSPACE" then
+		AutoComplete.disallowAutoComplete = true
+	end
+end
+
+---@param self ChatFrameEditBox
+local function ChatEditBoxOnKeyUp(self, key)
+	if not DB.options.enableAutoComplete then
+		return
+	end
+	if key == "BACKSPACE" then
+		AutoComplete.disallowAutoComplete = false
+	end
+end
+
+---@param self ChatFrameEditBox
+local function ChatEditBoxOnFocusLost(self)
+	AutoComplete:HideDropDown(self)
+end
+
+local origAutoCompleteEditBox_OnEnterPressed
+
+local function AutoCompleteEditBox_OnEnterPressed(self, ...)
+	local origReturn = origAutoCompleteEditBox_OnEnterPressed(self, ...)
+	if not DB.options.enableAutoComplete then
+		return origReturn
+	end
+	if origReturn then
+		return origReturn
+	end
+	if AutoComplete:OnEnter(self) then
+		return true
+	end
+	return false
 end
 
 ---@param self ChatFrame
@@ -1121,6 +1458,7 @@ do
 
 	---@class ChatEmotesUIConfigMixin : Frame
 	---@field public Inset Frame
+	---@field public Options ConfigWidget[]
 
 	---@type ChatEmotesUIConfigMixin
 	local UIConfigMixin = {}
@@ -1163,32 +1501,150 @@ do
 		end
 	end
 
+	---@class ConfigOption
+	---@field public key string
+	---@field public type? string
+	---@field public percentile? boolean
+	---@field public requires? string
+
+	---@class ConfigWidget : EditBox
+	---@field public cvar ConfigOption
+	---@field public finalized boolean
+	---@field public frame ChatEmotesUIConfigMixin
+	---@field public OnShow function
+	---@field public OnSave function
+	---@field public CanSave function
+	---@field public Update function
+	---@field public UpdateState function
+	---@field public UpdateOtherStates function
+	---@field public value? any
+
 	local InputFactory = {}
 
 	do
 
-		local function EditBox_OnEditFocusLost(self)
-			local cvar = self.cvar
-			if cvar.type ~= "number" then
-				return
-			end
+		---@param widget ConfigWidget
+		local function OnShow(widget)
+			local cvar = widget.cvar
 			local key = cvar.key
 			local options = DB.options
-			local value = self.value
-			if not value or value < 1 then
-				local ovalue = defaults.options[key]
-				value = floor(ovalue * 100 + 0.5)
-			elseif value > 999 then
-				value = 999
+			local value = options[key]
+			local widgetType = widget:GetObjectType()
+			if widgetType == "EditBox" then
+				if cvar.type == "number" then
+					if cvar.percentile then
+						widget.value = floor(value * 100 + 0.5)
+					else
+						widget.value = value
+					end
+					widget:SetNumber(widget.value)
+				else
+					widget.value = value
+					widget:SetText(widget.value)
+				end
+			elseif widgetType == "CheckButton" then
+				widget.value = value
+				widget:SetChecked(widget.value) ---@diagnostic disable-line: undefined-field
 			end
-			if cvar.percentile then
-				options[key] = value / 100
-			else
-				options[key] = value
-			end
-			self:SetNumber(value)
 		end
 
+		---@param widget ConfigWidget
+		local function OnSave(widget)
+			DB.options[widget.cvar.key] = widget.value
+		end
+
+		---@param widget ConfigWidget
+		local function CanSave(widget)
+			local value = widget.value
+			local cvar = widget.cvar
+			local widgetType = widget:GetObjectType()
+			if widgetType == "EditBox" then
+				if cvar.type == "number" then
+					return type(value) == "number"
+				else
+					return type(value) == "string"
+				end
+			elseif widgetType == "CheckButton" then
+				return type(value) == "boolean"
+			end
+		end
+
+		---@param widget ConfigWidget
+		local function Update(widget)
+		end
+
+		---@param widget ConfigWidget
+		local function UpdateState(widget)
+			local cvar = widget.cvar
+			if not cvar then
+				return
+			end
+			if not cvar.requires then
+				return
+			end
+			if not widget.SetEnabled then
+				return
+			end
+			widget:SetEnabled(DB.options[cvar.requires]) ---@diagnostic disable-line: redundant-parameter
+		end
+
+		---@param widget ConfigWidget
+		local function UpdateOtherStates(widget)
+			local options = widget.frame.Options
+			for _, otherWidget in ipairs(options) do
+				if otherWidget ~= widget then
+					otherWidget:UpdateState()
+				end
+			end
+		end
+
+		---@param self ConfigWidget
+		local function Common_OnEnable(self)
+			local r, g, b = 1, 1, 1
+			local SetTextColor = self.SetTextColor ---@diagnostic disable-line: undefined-field
+			if SetTextColor then
+				SetTextColor(self, r, g, b)
+			end
+			local Label = self.Label
+			if Label then
+				Label:SetTextColor(r, g, b)
+			end
+		end
+
+		---@param self ConfigWidget
+		local function Common_OnDisable(self)
+			local r, g, b = 0.5, 0.5, 0.5
+			local SetTextColor = self.SetTextColor ---@diagnostic disable-line: undefined-field
+			if SetTextColor then
+				SetTextColor(self, r, g, b)
+			end
+			local Label = self.Label
+			if Label then
+				Label:SetTextColor(r, g, b)
+			end
+		end
+
+		---@param self ConfigWidget
+		local function Common_OnShow(self)
+			self:OnShow()
+			self:UpdateState()
+		end
+
+		---@param self ConfigWidget
+		local function Common_OnSave(self)
+			local widgetType = self:GetObjectType()
+			if widgetType == "CheckButton" then
+				self.value = not not self:GetChecked() ---@diagnostic disable-line: undefined-field
+			end
+			if not self:CanSave() then
+				self:OnShow()
+				return
+			end
+			self:OnSave()
+			self:UpdateOtherStates()
+		end
+
+		---@param self ConfigWidget
 		local function EditBox_OnEnterPressed(self)
 			local cvar = self.cvar
 			if cvar.type == "number" then
@@ -1196,69 +1652,55 @@ do
 			else
 				self.value = self:GetText()
 			end
+			Common_OnSave(self)
 			self:ClearFocus()
 		end
 
+		---@param self ConfigWidget
 		local function EditBox_OnTextChanged(self)
-			if not self.Update then
-				return
-			end
 			self:Update()
 		end
 
-		local function EditBox_OnShow(self)
-			local cvar = self.cvar
-			local options = DB.options
-			if cvar.type == "number" then
-				if cvar.percentile then
-					self.value = floor(options[cvar.key] * 100 + 0.5)
-				else
-					self.value = options[cvar.key]
-				end
-				self:SetNumber(self.value)
-			else
-				self.value = options[cvar.key]
-				self:SetText(self.value)
-			end
-		end
-
+		---@param self ConfigWidget
 		local function EditBox_OnArrowPressed(self)
-			if not self.Update then
-				return
-			end
 			self:Update(true)
 		end
 
-		local function CheckButton_OnShow(self)
-			self:SetChecked(DB.options[self.cvar.key])
-		end
-
-		local function CheckButton_OnClick(self, button, down)
-			DB.options[self.cvar.key] = not not self:GetChecked()
-		end
-
-		function InputFactory:FinalizeOption(frame, widget, offsetX, offsetY)
+		---@param frame ChatEmotesUIConfigMixin
+		---@param widget ConfigWidget
+		function InputFactory:FinalizeOption(frame, widget)
 			if widget.finalized then
 				return widget
 			end
 			widget.finalized = true
+			widget.frame = frame
+			widget.OnShow = OnShow
+			widget.OnSave = OnSave
+			widget.CanSave = CanSave
+			widget.Update = Update
+			widget.UpdateState = UpdateState
+			widget.UpdateOtherStates = UpdateOtherStates
 			if widget.cvar then
 				local widgetType = widget:GetObjectType()
 				if widgetType == "EditBox" then
-					widget:HookScript("OnEditFocusLost", EditBox_OnEditFocusLost)
-					widget:SetScript("OnEnterPressed", EditBox_OnEnterPressed) -- override default
+					widget:HookScript("OnEnable", Common_OnEnable)
+					widget:HookScript("OnDisable", Common_OnDisable)
+					widget:HookScript("OnShow", Common_OnShow)
+					widget:HookScript("OnEditFocusLost", Common_OnShow)
 					widget:HookScript("OnTextChanged", EditBox_OnTextChanged)
-					widget:HookScript("OnShow", EditBox_OnShow)
 					widget:HookScript("OnArrowPressed", EditBox_OnArrowPressed)
+					widget:SetScript("OnEnterPressed", EditBox_OnEnterPressed) -- override default
 				elseif widgetType == "CheckButton" then
-					widget:HookScript("OnShow", CheckButton_OnShow)
-					widget:HookScript("OnClick", CheckButton_OnClick)
+					widget:HookScript("OnEnable", Common_OnEnable)
+					widget:HookScript("OnDisable", Common_OnDisable)
+					widget:HookScript("OnShow", Common_OnShow)
+					widget:HookScript("OnClick", Common_OnSave)
 				end
 			end
 			local index = #frame.Options
 			local prevOption = frame.Options[index]
 			if prevOption then
-				widget:SetPoint("TOPLEFT", prevOption, "BOTTOMLEFT", offsetX or 0, offsetY or 0)
+				widget:SetPoint("TOPLEFT", prevOption, "BOTTOMLEFT", 0, 0)
 			else
 				widget:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, 0)
 			end
@@ -1268,17 +1710,19 @@ do
 
 	end
 
-	local function CreateLabel(frame, widget, label, offsetX, offsetY)
-		widget.Label = widget:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-		widget.Label:SetPoint("LEFT", widget, "RIGHT", 4 + (offsetX or 0), offsetY or 0)
-		widget.Label:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
-		widget.Label:SetJustifyH("LEFT")
-		widget.Label:SetJustifyV("TOP")
-		widget.Label:SetText(label)
+	local function CreateLabel(frame, widget, text, offsetX, offsetY)
+		local label = widget:CreateFontString(nil, "ARTWORK", "GameFontHighlight") ---@type FontString
+		label:SetPoint("LEFT", widget, "RIGHT", 4 + (offsetX or 0), offsetY or 0)
+		label:SetPoint("RIGHT", frame, "RIGHT", -16, 0)
+		label:SetJustifyH("LEFT")
+		label:SetJustifyV("TOP")
+		label:SetText(text)
+		return label
 	end
 
+	---@return ConfigWidget
 	function InputFactory:CreateEditBox(frame, cvar, label)
-		local editBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+		local editBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate") ---@type ConfigWidget
 		editBox.cvar = cvar
 		editBox:SetSize(48, 32)
 		editBox:SetAutoFocus(false)
@@ -1291,6 +1735,7 @@ do
 		return InputFactory:FinalizeOption(frame, editBox)
 	end
 
+	---@return ConfigWidget
 	function InputFactory:CreateEditBoxNumeric(frame, cvar, label)
 		local editBox = self:CreateEditBox(frame, cvar, label)
 		editBox:SetNumeric(true)
@@ -1299,8 +1744,16 @@ do
 		return InputFactory:FinalizeOption(frame, editBox)
 	end
 
+	---@return ConfigWidget
+	function InputFactory:CreateEditBoxChar(frame, cvar, label)
+		local editBox = self:CreateEditBox(frame, cvar, label)
+		editBox:SetMaxLetters(1)
+		return InputFactory:FinalizeOption(frame, editBox)
+	end
+
+	---@return FontString
 	function InputFactory:CreateFontString(frame)
-		local fontString = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		local fontString = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight") ---@type FontString
 		fontString:SetNonSpaceWrap(false)
 		fontString:SetWordWrap(false) ---@diagnostic disable-line: redundant-parameter
 		fontString:SetSize(0, 20)
@@ -1309,15 +1762,16 @@ do
 		return InputFactory:FinalizeOption(frame, fontString)
 	end
 
-	---@class UICheckButtonTemplate : CheckButton
+	---@class UICheckButtonTemplate : CheckButton, ConfigWidget
 	---@field public text FontString
 
+	---@return UICheckButtonTemplate
 	function InputFactory:CreateCheckBox(frame, cvar, label)
 		local checkBox = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate") ---@type UICheckButtonTemplate
 		checkBox.cvar = cvar
 		checkBox:SetSize(32, 32)
 		checkBox.Label = CreateLabel(frame, checkBox, label, -5, 0)
-		return InputFactory:FinalizeOption(frame, checkBox, -10, 0)
+		return InputFactory:FinalizeOption(frame, checkBox)
 	end
 
 	function CreateConfig(frameName)
@@ -1337,8 +1791,47 @@ do
 			frame.ScrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 29)
 			do -- emoteScale
 
-				local emoteScale = InputFactory:CreateEditBoxNumeric(frame.ScrollFrame.ScrollChildFrame, { type = "number", key = "emoteScale", percentile = true }, L.EMOTE_SCALE)
+				local emoteScale = InputFactory:CreateEditBoxNumeric(frame.ScrollFrame.ScrollChildFrame, { type = "number", key = "emoteScale", percentile = true }, L.EMOTE_SCALE) ---@class ConfigEditBoxEmoteScaleWidget : ConfigWidget, EditBox
 				emoteScale.Preview = InputFactory:CreateFontString(frame.ScrollFrame.ScrollChildFrame)
+
+				function emoteScale:OnShow()
+					local cvar = self.cvar
+					local key = cvar.key
+					local options = DB.options
+					if cvar.percentile then
+						self.value = floor(options[key] * 100 + 0.5)
+					else
+						self.value = options[key]
+					end
+					self:SetNumber(self.value)
+				end
+
+				function emoteScale:OnSave()
+					local cvar = self.cvar
+					local key = cvar.key
+					local options = DB.options
+					local value = self.value
+					if not value or value < 1 then
+						local ovalue = defaults.options[key]
+						value = floor(ovalue * 100 + 0.5)
+					elseif value > 999 then
+						value = 999
+					end
+					if cvar.percentile then
+						options[key] = value / 100
+					else
+						options[key] = value
+					end
+					self:SetNumber(value)
+				end
+
+				---@param newEmote boolean
+				function emoteScale:Update(newEmote)
+					if newEmote or not self.emote then
+						self:RandomEmote()
+					end
+					self:UpdateEmote()
+				end
 
 				function emoteScale:RandomEmote()
 					local emote = GetRandomEmote()
@@ -1362,16 +1855,48 @@ do
 					addonConfigFrame:UpdateScrollFrame()
 				end
 
-				---@param newEmote boolean
-				function emoteScale:Update(newEmote)
-					if newEmote or not self.emote then
-						self:RandomEmote()
-					end
-					self:UpdateEmote()
+			end
+			do -- emoteHover
+
+				local emoteHover = InputFactory:CreateCheckBox(frame.ScrollFrame.ScrollChildFrame, { key = "emoteHover" }, L.EMOTE_HOVER) ---@class ConfigEditBoxEmoteHoverWidget : UICheckButtonTemplate
+
+				emoteHover:SetPoint("TOPLEFT", frame.Options[#frame.Options - 1], "BOTTOMLEFT", -10, 0)
+
+			end
+			do -- enableAutoComplete
+
+				local enableAutoComplete = InputFactory:CreateCheckBox(frame.ScrollFrame.ScrollChildFrame, { key = "enableAutoComplete" }, L.ENABLE_AUTOCOMPLETE) ---@class ConfigEditBoxEnableAutoCompleteWidget : UICheckButtonTemplate
+
+				local OnSave = enableAutoComplete.OnSave
+
+				function enableAutoComplete:OnSave(...)
+					OnSave(self, ...)
+					AutoComplete:HideDropDown(nil, true)
 				end
 
 			end
-			InputFactory:CreateCheckBox(frame.ScrollFrame.ScrollChildFrame, { key = "emoteHover" }, L.EMOTE_HOVER)
+			do -- autoCompleteChar
+
+				local autoCompleteChar = InputFactory:CreateEditBoxChar(frame.ScrollFrame.ScrollChildFrame, { key = "autoCompleteChar", requires = "enableAutoComplete" }, L.AUTOCOMPLETE_CHAR) ---@class ConfigEditBoxAutoCompleteCharWidget : ConfigWidget, EditBox
+
+				autoCompleteChar:SetPoint("TOPLEFT", frame.Options[#frame.Options - 1], "BOTTOMLEFT", 10, 0)
+
+				function autoCompleteChar:CanSave()
+					local chr = self.value
+					if type(chr) ~= "string" then
+						return false
+					end
+					chr = chr:trim()
+					if strlenutf8(chr) ~= 1 then
+						return false
+					end
+					if INVALID_AUTOCOMPLETE_CHARS[chr] then
+						return false
+					end
+					return true
+				end
+
+			end
 		end
 		frame:OnLoad()
 		frame:Hide()
@@ -1434,19 +1959,24 @@ local function Init()
 	for _, event in ipairs(supportedChatEvents) do
 		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
 	end
+	origAutoCompleteEditBox_OnEnterPressed = _G.AutoCompleteEditBox_OnEnterPressed
+	_G.AutoCompleteEditBox_OnEnterPressed = AutoCompleteEditBox_OnEnterPressed
 	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
 		local chatFrame = _G["ChatFrame" .. i] ---@type ChatFrame
 		if chatFrame then
 			local editBox = chatFrame.editBox
-			editBox:HookScript("OnTextChanged", ChatEditBoxOnTextChanged)
+			editBox:HookScript("OnTextChanged", ChatEditBoxOnChanged)
+			editBox:HookScript("OnChar", ChatEditBoxOnChanged)
+			editBox:HookScript("OnArrowPressed", ChatEditBoxOnArrow)
+			editBox:HookScript("OnKeyDown", ChatEditBoxOnKeyDown)
+			editBox:HookScript("OnKeyUp", ChatEditBoxOnKeyUp)
+			editBox:HookScript("OnTabPressed", ChatEditBoxOnTabPressed)
+			editBox:HookScript("OnEscapePressed", ChatEditBoxOnFocusLost)
 			chatFrame:HookScript("OnHyperlinkClick", ChatFrameOnHyperlinkClick)
 			chatFrame:HookScript("OnHyperlinkEnter", ChatFrameOnHyperlinkEnter)
 			chatFrame:HookScript("OnHyperlinkLeave", ChatFrameOnHyperlinkLeave)
 		end
 	end
-	hooksecurefunc("AutoCompleteEditBox_SetAutoCompleteSource", AutoCompleteEditBox_SetAutoCompleteSource)
-	hooksecurefunc("AutoCompleteEditBox_SetCustomAutoCompleteFunction", AutoCompleteEditBox_SetCustomAutoCompleteFunction)
-	hooksecurefunc("AutoComplete_UpdateResults", AutoComplete_UpdateResults)
 	CreateSlashCommand()
 	addonButton = CreateButton("VladsChatEmotesButton")
 end

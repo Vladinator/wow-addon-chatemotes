@@ -12,5 +12,7 @@ L.CHAT_EMOTES_OPTIONS = "Chat Emotes • Options"
 L.OPTIONS = "Options"
 L.EMOTE_SCALE = "% Emote Scale"
 L.EMOTE_HOVER = "Show Emote Tooltip"
+L.ENABLE_AUTOCOMPLETE = "Enable AutoComplete"
+L.AUTOCOMPLETE_CHAR = "AutoComplete Character"
 
 ns.L = L

@@ -3,6 +3,7 @@
         "LibStub",
         "GameTooltip",
         "ChatEdit_GetActiveWindow",
+        "ChatEdit_ActivateChat",
         "ChatEdit_InsertLink",
         "ChatFrame_OpenChat",
         "CallbackRegistryMixin",
