@@ -11,23 +11,30 @@ Note that for this addon to function properly, you'll need to also grab a packag
 - [Discord](https://github.com/Vladinator89/wow-addon-chatemotes-discord)
 - [Twitch](https://github.com/Vladinator89/wow-addon-chatemotes-twitch)
 
-Commands
+Features
 ======================
-You can open the emote picker interface using `/ce`
-
-Autocomplete
-======================
-Using `#` will start searching for emotes fitting the text you write. Tab to cycle through the options, and Enter to select and insert the desired emote. This might not always appear in special chats due to some issues re-using the autocomplete system native to the game, might have to implement a custom one that won't conflict if sharing doesn't end up working.
-
-![image](https://user-images.githubusercontent.com/8304135/143776710-0b8f16ea-24b4-4e06-84fa-d19f41fe562d.png)
-
-Extra
-======================
-
+- You can open the emote picker interface using `/ce`.
+- Typing `#` will start searching for emotes fitting the text you write.
 - You can hover emotes in chat to display their name and a larger preview.
 - Clicking emotes will insert it into your edit box for sending.
 - Right-clicking emotes will open the emote picker.
+- Native Emoji support for regular Discord emotes. Test it yourself using <kbd>Win</kbd> + <kbd>.</kbd>
 
 Preview
 ======================
-![image](https://user-images.githubusercontent.com/8304135/143776308-f12569e2-8174-4398-b9f0-7c9385b44901.png)
+
+Emote Picker
+
+![image](https://user-images.githubusercontent.com/8304135/144900033-1339fcc0-583b-4ec0-ae53-02de98122857.png)
+
+Chat Button
+
+![image](https://user-images.githubusercontent.com/8304135/144900191-867ca167-ec14-482a-91db-ad607ae75be5.png)
+
+AutoComplete
+
+![image](https://user-images.githubusercontent.com/8304135/144900442-14cf23c5-6745-4c0f-b6cb-ed28e7ff4260.png)
+
+Options
+
+![image](https://user-images.githubusercontent.com/8304135/144900299-c9f23bdb-0e62-40af-b3b7-1ab3c18b51e4.png)
