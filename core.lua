@@ -18,6 +18,8 @@ local strlenutf8 = _G.strlenutf8
 ---@field public EMOTE_HOVER string
 ---@field public ENABLE_AUTOCOMPLETE string
 ---@field public AUTOCOMPLETE_CHAR string
+---@field public AUTOCOMPLETE_PRESET string
+---@field public UNLOCK_BUTTON string
 
 ---@class ChatEmotesNamespace
 ---@field public NewLocale function
@@ -46,6 +48,8 @@ local INVALID_AUTOCOMPLETE_CHARS = { [" "] = true, [":"] = true, ["|"] = true, [
 ---@field public emoteHover boolean
 ---@field public enableAutoComplete boolean
 ---@field public autoCompleteChar string
+---@field public autoCompletePreset number
+---@field public unlockButton boolean
 
 ---@class ChatEmotesDB_Position
 ---@field public point string
@@ -59,6 +63,7 @@ local INVALID_AUTOCOMPLETE_CHARS = { [" "] = true, [":"] = true, ["|"] = true, [
 ---@class ChatEmotesDB
 ---@field public options ChatEmotesDB_Options
 ---@field public position ChatEmotesDB_Position
+---@field public buttonPosition ChatEmotesDB_Position
 ---@field public favorites table<string, boolean|nil>
 ---@field public statistics table<string, ChatEmoteStatistics>
 
@@ -69,6 +74,8 @@ local defaults = {
 		emoteHover = true,
 		enableAutoComplete = true,
 		autoCompleteChar = "#",
+		autoCompletePreset = 2,
+		unlockButton = false,
 	},
 	position = {
 		point = "LEFT",
@@ -78,6 +85,13 @@ local defaults = {
 		y = -175,
 		width = 335,
 		height = 345,
+	},
+	buttonPosition = {
+		point = "TOP",
+		relativeTo = "ChatFrameMenuButton", -- ChatFrame1ButtonFrame
+		relativePoint = "BOTTOM",
+		x = 0,
+		y = 0,
 	},
 	favorites = {},
 	statistics = {},
@@ -256,6 +270,68 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 	end
 end
 
+local GameFontDisableSmall = GameFontDisableSmall ---@diagnostic disable-line: undefined-global
+local GameFontNormalSmall = GameFontNormalSmall ---@diagnostic disable-line: undefined-global
+local GameFontHighlightSmall = GameFontHighlightSmall ---@diagnostic disable-line: undefined-global
+
+local GameFontDisable = GameFontDisable ---@diagnostic disable-line: undefined-global
+local GameFontNormal = GameFontNormal ---@diagnostic disable-line: undefined-global
+local GameFontHighlight = GameFontHighlight ---@diagnostic disable-line: undefined-global
+
+local GameFontDisableLarge = GameFontDisableLarge ---@diagnostic disable-line: undefined-global
+local GameFontNormalLarge = GameFontNormalLarge ---@diagnostic disable-line: undefined-global
+local GameFontHighlightLarge = GameFontHighlightLarge ---@diagnostic disable-line: undefined-global
+
+---@class AutoCompleteFontPreset
+---@field public id number
+---@field public text string
+---@field public disabled FontString
+---@field public normal FontString
+---@field public highlight FontString
+
+---@type AutoCompleteFontPreset[]
+local AutoCompleteFontPresets = {
+	{
+		id = 1,
+		text = SMALL, ---@diagnostic disable-line: undefined-global
+		disabled = GameFontDisableSmall,
+		normal = GameFontNormalSmall,
+		highlight = GameFontHighlightSmall,
+	},
+	{
+		id = 2,
+		text = DEFAULT, ---@diagnostic disable-line: undefined-global
+		disabled = GameFontDisable,
+		normal = GameFontNormal,
+		highlight = GameFontHighlight,
+	},
+	{
+		id = 3,
+		text = LARGE, ---@diagnostic disable-line: undefined-global
+		disabled = GameFontDisableLarge,
+		normal = GameFontNormalLarge,
+		highlight = GameFontHighlightLarge,
+	},
+}
+
+local AutoCompleteFontPresetFallback = AutoCompleteFontPresets[2]
+
+---@param fontObjectPreset AutoCompleteFontPreset
+local function AutoCompleteFontObjectPresetFallback(fontObjectPreset)
+	if DB then
+		if fontObjectPreset then
+			DB.options.autoCompletePreset = fontObjectPreset.id
+			return fontObjectPreset
+		end
+		for _, _fontObjectPreset in ipairs(AutoCompleteFontPresets) do
+			if _fontObjectPreset.id == DB.options.autoCompletePreset then
+				return _fontObjectPreset
+			end
+		end
+	end
+	return AutoCompleteFontPresetFallback
+end
+
 ---@type AutoCompleteFrame
 local AutoComplete do
 
@@ -270,47 +346,6 @@ local AutoComplete do
 	local BUTTON_HEIGHT = 14
 	local BUTTON_PADDING_X = 30
 	local BUTTON_PADDING_Y = 35 - 10
-
-	local GameFontDisableSmall = GameFontDisableSmall ---@diagnostic disable-line: undefined-global
-	local GameFontNormalSmall = GameFontNormalSmall ---@diagnostic disable-line: undefined-global
-	local GameFontHighlightSmall = GameFontHighlightSmall ---@diagnostic disable-line: undefined-global
-
-	local GameFontDisable = GameFontDisable ---@diagnostic disable-line: undefined-global
-	local GameFontNormal = GameFontNormal ---@diagnostic disable-line: undefined-global
-	local GameFontHighlight = GameFontHighlight ---@diagnostic disable-line: undefined-global
-
-	local GameFontDisableLarge = GameFontDisableLarge ---@diagnostic disable-line: undefined-global
-	local GameFontNormalLarge = GameFontNormalLarge ---@diagnostic disable-line: undefined-global
-	local GameFontHighlightLarge = GameFontHighlightLarge ---@diagnostic disable-line: undefined-global
-
-	---@class AutoCompleteFontPreset
-	---@field public text string
-	---@field public disabled FontString
-	---@field public normal FontString
-	---@field public highlight FontString
-
-	---@type AutoCompleteFontPreset[]
-	local FontObjectPresets = {
-		{
-			text = SMALL, ---@diagnostic disable-line: undefined-global
-			disabled = GameFontDisableSmall,
-			normal = GameFontNormalSmall,
-			highlight = GameFontHighlightSmall,
-		},
-		{
-			text = DEFAULT, ---@diagnostic disable-line: undefined-global
-			disabled = GameFontDisable,
-			normal = GameFontNormal,
-			highlight = GameFontHighlight,
-		},
-		{
-			text = LARGE, ---@diagnostic disable-line: undefined-global
-			disabled = GameFontDisableLarge,
-			normal = GameFontNormalLarge,
-			highlight = GameFontHighlightLarge,
-		},
-	}
-	local DefaultFontObjectPreset = FontObjectPresets[2]
 
 	---@class AutoCompleteFrame : Frame
 	---@field public Instructions FontString
@@ -662,9 +697,7 @@ local AutoComplete do
 
 	---@param fontObjectPreset AutoCompleteFontPreset
 	function AutoComplete:SetFontObjectPreset(fontObjectPreset)
-		if not fontObjectPreset then
-			fontObjectPreset = DefaultFontObjectPreset
-		end
+		fontObjectPreset = AutoCompleteFontObjectPresetFallback(fontObjectPreset)
 		if self.fontObjectPreset == fontObjectPreset then
 			return
 		end
@@ -1409,14 +1442,134 @@ do
 		return frame
 	end
 
-	---@class ChatEmotesUIButton : Button
+	---@class ChatEmotesUIButtonMixin : Button
+
+	---@type ChatEmotesUIButtonMixin
+	local UIButtonMixin = {}
+
+	function UIButtonMixin:OnLoad()
+		self:SetFrameStrata("LOW")
+		self:SetSize(32, 32)
+		self:SetClampedToScreen(true)
+		self:UpdatePosition()
+		self:UpdateTexture()
+		C_Timer.After(1, function() self:UpdateTexture() end)
+		self:SetScript("OnClick", self.OnClick)
+		self:SetScript("OnEnable", self.OnEnable)
+		self:SetScript("OnDisable", self.OnDisable)
+		self:SetScript("OnEnter", self.OnEnter)
+		self:SetScript("OnLeave", self.OnLeave)
+		self:SetScript("OnShow", self.OnShow)
+		self:SetScript("OnHide", self.OnHide)
+		self:SetScript("OnDragStart", self.OnDragStart)
+		self:SetScript("OnDragStop", self.OnDragStop)
+	end
+
+	function UIButtonMixin:UpdateTexture()
+		local emotes = CEL.GetEmotes()
+		local text
+		if not emotes or not emotes[1] then
+			text = NO_EMOTE_MARKUP_FALLBACK
+		else
+			local emote = GetRandomEmote()
+			text = emote.markup
+		end
+		self.Text:SetText(text)
+	end
+
+	---@param self ChatEmotesUIButtonMixin
+	local function LoadPosition(self)
+		local position = DB.buttonPosition
+		local point, relativeTo, relativePoint, x, y = position.point, position.relativeTo, position.relativePoint, position.x, position.y
+		if not point then
+			local oposition = defaults.buttonPosition
+			point, relativeTo, relativePoint, x, y = oposition.point, oposition.relativeTo, oposition.relativePoint, oposition.x, oposition.y
+		end
+		self:ClearAllPoints()
+		self:SetPoint(point, relativeTo, relativePoint, x, y)
+		return point, relativeTo, relativePoint, x, y
+	end
+
+	---@param self ChatEmotesUIButtonMixin
+	local function SavePosition(self)
+		if not DB.options.unlockButton then
+			return
+		end
+		local point, relativeTo, relativePoint, x, y = self:GetPoint()
+		if not point then
+			return
+		end
+		local position = DB.buttonPosition
+		position.point, position.relativeTo, position.relativePoint, position.x, position.y = point, relativeTo and relativeTo:GetName() or "UIParent", relativePoint, x, y
+		return position.point, position.relativeTo, position.relativePoint, position.x, position.y
+	end
+
+	function UIButtonMixin:UpdatePosition(forceToMiddle)
+		local unlocked = DB.options.unlockButton
+		local position = DB.buttonPosition
+		if not unlocked then
+			local oposition = defaults.buttonPosition
+			position.point, position.relativeTo, position.relativePoint, position.x, position.y = oposition.point, oposition.relativeTo, oposition.relativePoint, oposition.x, oposition.y
+		elseif forceToMiddle then
+			position.point, position.relativeTo, position.relativePoint, position.x, position.y = "CENTER", "UIParent", "CENTER", 0, 0
+		end
+		LoadPosition(self)
+		SavePosition(self)
+		self:SetMovable(unlocked)
+		self:RegisterForDrag(unlocked and "LeftButton" or nil)
+	end
+
+	function UIButtonMixin:OnClick()
+		PlaySound(SOUNDKIT.IG_CHAT_EMOTE_BUTTON) ---@diagnostic disable-line: undefined-global
+		addon:TogglePicker()
+		self:UpdateTexture()
+	end
+
+	function UIButtonMixin:OnEnable()
+		self.Text:Show()
+	end
+
+	function UIButtonMixin:OnDisable()
+		self.Text:Hide()
+	end
+
+	function UIButtonMixin:OnEnter()
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip_SetTitle(GameTooltip, L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-global
+		GameTooltip:Show()
+	end
+
+	function UIButtonMixin:OnLeave()
+		GameTooltip:Hide()
+	end
+
+	function UIButtonMixin:OnShow()
+		self:UpdatePosition()
+	end
+
+	function UIButtonMixin:OnHide()
+		self:UpdatePosition()
+	end
+
+	---@param button string
+	function UIButtonMixin:OnDragStart(button)
+		if button ~= "LeftButton" then
+			return
+		end
+		self:StartMoving()
+	end
+
+	function UIButtonMixin:OnDragStop()
+		self:StopMovingOrSizing()
+		SavePosition(self)
+		self:UpdatePosition()
+	end
+
+	---@class ChatEmotesUIButton : ChatEmotesUIButtonMixin
 
 	function CreateButton(frameName)
-		local button = CreateFrame("Button", frameName, UIParent) ---@type ChatEmotesUIButton
-		button:SetFrameStrata("LOW")
-		button:SetSize(32, 32)
-		---@diagnostic disable-next-line: undefined-global
-		button:SetPoint("TOP", ChatFrameMenuButton, "BOTTOM", 0, 0) -- ChatFrame1ButtonFrame
+		local button = CreateFrame("Button", frameName, UIParent) ---@type ChatEmotesUIButtonMixin
+		Mixin(button, UIButtonMixin)
 		button.Text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		button.Text:SetJustifyH("CENTER")
 		button.Text:SetJustifyV("MIDDLE")
@@ -1425,34 +1578,8 @@ do
 		button:SetPushedTexture(format("Interface\\AddOns\\%s\\textures\\chat-button-down", addonName))
 		button:SetDisabledTexture(format("Interface\\AddOns\\%s\\textures\\chat-button-disabled", addonName))
 		button:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-		function button:UpdateTexture()
-			local emotes = CEL.GetEmotes()
-			local text
-			if not emotes or not emotes[1] then
-				text = NO_EMOTE_MARKUP_FALLBACK
-			else
-				local emote = GetRandomEmote()
-				text = emote.markup
-			end
-			button.Text:SetText(text)
-		end
-		button:SetScript("OnClick", function()
-			PlaySound(SOUNDKIT.IG_CHAT_EMOTE_BUTTON) ---@diagnostic disable-line: undefined-global
-			addon:TogglePicker()
-			button:UpdateTexture()
-		end)
-		button:SetScript("OnEnable", function() button.Text:Show() end)
-		button:SetScript("OnDisable", function() button.Text:Hide() end)
-		button:SetScript("OnEnter", function()
-			GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-			GameTooltip_SetTitle(GameTooltip, L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-global
-			GameTooltip:Show()
-		end)
-		button:SetScript("OnLeave", function()
-			GameTooltip:Hide()
-		end)
-		button:UpdateTexture()
-		C_Timer.After(1, button.UpdateTexture)
+		button:OnLoad()
+		button:Show()
 		return button
 	end
 
@@ -1897,6 +2024,57 @@ do
 				end
 
 			end
+			do -- autoCompletePreset
+
+				local autoCompletePreset = InputFactory:CreateEditBoxNumeric(frame.ScrollFrame.ScrollChildFrame, { type = "number", key = "autoCompletePreset" }, L.AUTOCOMPLETE_PRESET) ---@class ConfigEditBoxAutoCompletePresetWidget : ConfigWidget, EditBox
+
+				autoCompletePreset.Text = InputFactory:CreateFontString(frame.ScrollFrame.ScrollChildFrame)
+				autoCompletePreset.Text:SetTextColor(1, 1, 0.5)
+				local text = {}
+				for i, fontObjectPreset in ipairs(AutoCompleteFontPresets) do
+					text[i] = format("%d = %s", fontObjectPreset.id, fontObjectPreset.text)
+				end
+				text = table.concat(text, ", ")
+				autoCompletePreset.Text:SetText(text)
+
+				function autoCompletePreset:CanSave()
+					local number = self.value
+					for _, fontObjectPreset in ipairs(AutoCompleteFontPresets) do
+						if fontObjectPreset.id == number then
+							return true
+						end
+					end
+					if not number or number < 1 then
+						self.value = AutoCompleteFontPresetFallback.id
+						return true
+					end
+					return false
+				end
+
+				local OnSave = autoCompletePreset.OnSave
+
+				function autoCompletePreset:OnSave(...)
+					OnSave(self, ...)
+					DB.options.autoCompletePreset = self.value
+					AutoComplete:SetFontObjectPreset()
+				end
+
+			end
+			do -- unlockButton
+
+				local unlockButton = InputFactory:CreateCheckBox(frame.ScrollFrame.ScrollChildFrame, { key = "unlockButton" }, L.UNLOCK_BUTTON) ---@class ConfigEditBoxUnlockButtonWidget : UICheckButtonTemplate
+
+				unlockButton:SetPoint("TOPLEFT", frame.Options[#frame.Options - 1], "BOTTOMLEFT", -10, 0)
+
+				local OnSave = unlockButton.OnSave
+
+				function unlockButton:OnSave(...)
+					OnSave(self, ...)
+					addonButton:UpdatePosition(true)
+				end
+
+
+			end
 		end
 		frame:OnLoad()
 		frame:Hide()
@@ -1952,6 +2130,7 @@ local function InitDB()
 			setmetatable(t, { __index = v })
 		end
 	end
+	AutoComplete:SetFontObjectPreset()
 end
 
 local function Init()

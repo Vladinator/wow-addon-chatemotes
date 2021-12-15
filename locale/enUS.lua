@@ -14,5 +14,7 @@ L.EMOTE_SCALE = "% Emote Scale"
 L.EMOTE_HOVER = "Show Emote Tooltip"
 L.ENABLE_AUTOCOMPLETE = "Enable AutoComplete"
 L.AUTOCOMPLETE_CHAR = "AutoComplete Character"
+L.AUTOCOMPLETE_PRESET = "AutoComplete Size"
+L.UNLOCK_BUTTON = "Unlock Chat Emotes Button"
 
 ns.L = L
