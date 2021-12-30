@@ -20,6 +20,7 @@ local strlenutf8 = _G.strlenutf8
 ---@field public AUTOCOMPLETE_CHAR string
 ---@field public AUTOCOMPLETE_PRESET string
 ---@field public UNLOCK_BUTTON string
+---@field public AUTOCOMPLETE_ACCEPT string
 
 ---@class ChatEmotesNamespace
 ---@field public NewLocale function
@@ -337,7 +338,6 @@ local AutoComplete do
 
 	local AUTOCOMPLETE_MAX_BUTTONS = AUTOCOMPLETE_MAX_BUTTONS ---@diagnostic disable-line: undefined-global
 	local AUTOCOMPLETE_DEFAULT_Y_OFFSET = AUTOCOMPLETE_DEFAULT_Y_OFFSET ---@diagnostic disable-line: undefined-global
-	local PRESS_TAB = PRESS_TAB ---@diagnostic disable-line: undefined-global
 
 	local BUTTON_FORMAT = "|cffbbbbbb%s|r"
 	local BUTTON_FORMAT_CONTINUED = "|cffbbbbbb%s (+%d)|r"
@@ -357,6 +357,7 @@ local AutoComplete do
 	---@field public fontObjectPreset AutoCompleteFontPreset
 	---@field public disallowAutoComplete boolean
 	---@field public selectedIndex number
+	---@field public hasInsertedEmote boolean
 
 	---@class AutoCompleteButton : Button
 	---@field public Text FontString
@@ -483,7 +484,7 @@ local AutoComplete do
 
 		AutoComplete.Instructions = AutoComplete:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 		AutoComplete.Instructions:SetPoint("BOTTOMLEFT", 15, 10)
-		AutoComplete.Instructions:SetFormattedText(BUTTON_FORMAT, PRESS_TAB) ---@diagnostic disable-line: redundant-parameter
+		AutoComplete.Instructions:SetFormattedText(BUTTON_FORMAT, L.AUTOCOMPLETE_ACCEPT) ---@diagnostic disable-line: redundant-parameter
 
 		AutoComplete.Buttons = {}
 
@@ -605,7 +606,7 @@ local AutoComplete do
 		for i = numResults + 1, AUTOCOMPLETE_MAX_BUTTONS do
 			self.Buttons[i]:Hide()
 		end
-		AutoComplete.Instructions:SetFormattedText(totalReturns > AUTOCOMPLETE_MAX_BUTTONS and BUTTON_FORMAT_CONTINUED or BUTTON_FORMAT, PRESS_TAB, totalReturns - numResults) ---@diagnostic disable-line: redundant-parameter
+		AutoComplete.Instructions:SetFormattedText(totalReturns > AUTOCOMPLETE_MAX_BUTTONS and BUTTON_FORMAT_CONTINUED or BUTTON_FORMAT, L.AUTOCOMPLETE_ACCEPT, totalReturns - numResults) ---@diagnostic disable-line: redundant-parameter
 		self.numResults = numResults
 		local selectedIndex = self:GetSelectedIndex()
 		if not selectedIndex or selectedIndex > numResults then
@@ -689,6 +690,21 @@ local AutoComplete do
 			return
 		end
 		self:OnTab(editBox, step < 1)
+	end
+
+	---@param editBox ChatFrameEditBox
+	---@param char string
+	function AutoComplete:RemoveTrailingCharacter(editBox, char)
+		local index = editBox:GetCursorPosition()
+		local text = editBox:GetText()
+		local mid = strsub(text, index, index)
+		if mid ~= char then
+			return
+		end
+		local left = strsub(text, 1, index - 1)
+		local right = strsub(text, index + 1)
+		editBox:SetText(format("%s%s", left, right))
+		editBox:SetCursorPosition(index - 1)
 	end
 
 	function AutoComplete:GetFontObjectPreset()
@@ -779,6 +795,8 @@ local function ChatEditBoxOnKeyDown(self, key)
 	end
 	if key == "BACKSPACE" then
 		AutoComplete.disallowAutoComplete = true
+	elseif key == "SPACE" then
+		AutoComplete.hasInsertedEmote = AutoComplete:OnEnter(self)
 	end
 end
 
@@ -789,28 +807,17 @@ local function ChatEditBoxOnKeyUp(self, key)
 	end
 	if key == "BACKSPACE" then
 		AutoComplete.disallowAutoComplete = false
+	elseif key == "SPACE" then
+		if AutoComplete.hasInsertedEmote then
+			AutoComplete.hasInsertedEmote = nil
+			-- AutoComplete:RemoveTrailingCharacter(self, " ") -- TODO: it's probably best to keep the inserted space as most times you want to write something following the emote and pressing space twice to select then add a space felt more unnatural
+		end
 	end
 end
 
 ---@param self ChatFrameEditBox
 local function ChatEditBoxOnFocusLost(self)
 	AutoComplete:HideDropDown(self)
-end
-
-local origAutoCompleteEditBox_OnEnterPressed
-
-local function AutoCompleteEditBox_OnEnterPressed(self, ...)
-	local origReturn = origAutoCompleteEditBox_OnEnterPressed(self, ...)
-	if not DB.options.enableAutoComplete then
-		return origReturn
-	end
-	if origReturn then
-		return origReturn
-	end
-	if AutoComplete:OnEnter(self) then
-		return true
-	end
-	return false
 end
 
 ---@param self ChatFrame
@@ -2138,8 +2145,6 @@ local function Init()
 	for _, event in ipairs(supportedChatEvents) do
 		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
 	end
-	origAutoCompleteEditBox_OnEnterPressed = _G.AutoCompleteEditBox_OnEnterPressed
-	_G.AutoCompleteEditBox_OnEnterPressed = AutoCompleteEditBox_OnEnterPressed
 	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
 		local chatFrame = _G["ChatFrame" .. i] ---@type ChatFrame
 		if chatFrame then

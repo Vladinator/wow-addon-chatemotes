@@ -16,5 +16,6 @@ L.ENABLE_AUTOCOMPLETE = "Enable AutoComplete"
 L.AUTOCOMPLETE_CHAR = "AutoComplete Character"
 L.AUTOCOMPLETE_PRESET = "AutoComplete Size"
 L.UNLOCK_BUTTON = "Unlock Chat Emotes Button"
+L.AUTOCOMPLETE_ACCEPT = "Press |cff55FF55Space|r"
 
 ns.L = L
