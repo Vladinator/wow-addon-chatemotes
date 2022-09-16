@@ -131,7 +131,7 @@ local ignoreChannels = {
 ---@field public editBox ChatFrameEditBox
 
 local supportedChatEvents = {
-	"CHAT_MSG_COMMUNITIES_CHANNEL",
+	-- "CHAT_MSG_COMMUNITIES_CHANNEL", -- protected v Kstring
 	"CHAT_MSG_BN",
 	"CHAT_MSG_BN_CONVERSATION",
 	"CHAT_MSG_BN_WHISPER",
@@ -1093,7 +1093,12 @@ do
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self.ResizeButton:Init(self, MinPanelWidth, MinPanelHeight, MaxPanelWidth, MaxPanelHeight) ---@diagnostic disable-line: undefined-field
-		self.TitleText:SetText(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
+		-- TODO: DF support
+		if self.TitleText then
+			self.TitleText:SetText(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
+		else
+			self:SetTitle(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
+		end
 		self.showingArguments = false
 		self.filterDataProvider = CreateDataProvider()
 		self.logDataProvider = CreateDataProvider()
@@ -1526,7 +1531,11 @@ do
 		LoadPosition(self)
 		SavePosition(self)
 		self:SetMovable(unlocked)
-		self:RegisterForDrag(unlocked and "LeftButton" or nil)
+		if unlocked then
+			self:RegisterForDrag("LeftButton")
+		else
+			self:RegisterForDrag()
+		end
 	end
 
 	function UIButtonMixin:OnClick()
