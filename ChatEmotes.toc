@@ -1,8 +1,8 @@
-## Interface: 90105
+## Interface: 90207
 ## Title: Chat Emotes
 ## Notes: Yet another emotes related chat addon, jeez...
 ## Author: Vladinator (Vladinator-TarrenMill)
-## Version: 9.1.5.211230 (@project-version@)
+## Version: 9.2.7.220917 (@project-version@)
 ## SavedVariables: ChatEmotesDB
 ## Dependencies: 
 ## X-Curse-Project-ID: 551565
