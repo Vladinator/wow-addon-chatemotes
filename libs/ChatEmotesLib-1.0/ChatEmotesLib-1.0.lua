@@ -10,6 +10,7 @@ assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 ---@class ChatEmotesLib-1.0_Emote @v1.0 of the emote structure.
 ---@field public package string
 ---@field public folder string
+---@field public index number
 ---@field public name string
 ---@field public pattern string
 ---@field public file string
@@ -31,8 +32,8 @@ assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 ---@field public emotes ChatEmotesLib-1.0_Emote[]
 ---@field public weights table<ChatEmotesLib-1.0_Emote, boolean|number>
 
-local MAJOR, MINOR = "ChatEmotesLib-1.0", 1
-local CEL, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@type ChatEmotesLib-1.0
+local MAJOR, MINOR = "ChatEmotesLib-1.0", 2
+local CEL, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@class ChatEmotesLib-1.0
 if not CEL then return end
 
 local assert = assert
@@ -50,7 +51,7 @@ local strfind = strfind
 local strlen = strlen
 local strsub = strsub
 
-local UTF8 = LibStub("ChatEmotesLibUTF8-1.0", true) ---@type UTF8
+local UTF8 = LibStub("ChatEmotesLibUTF8-1.0", true) ---@class ChatEmotesLibUTF8-1.0
 local strcharutf8 = UTF8 and UTF8.char or strchar
 local strbyteutf8 = UTF8 and UTF8.byte or strbyte
 local strfindutf8 = UTF8 and UTF8.find or strfind
@@ -179,14 +180,8 @@ local function GetEmoteByUnicode(unicode)
 	return CEL.unicodeEmotes[unicode]
 end
 
----@param text string
----@return table, table, number @`segments`, `ignore`, `length`
-local function SafeSplit(text) end
-
----@param text string
----@param pattern string
----@param replacement string
-local function SafeReplace(text, pattern, replacement) end
+local SafeSplit
+local SafeReplace
 
 do
 
@@ -312,7 +307,7 @@ local function SetSearchCache(customFilter, name, emotes, weights)
 		cache = {}
 		CEL.emoteSearchCache[customFilter] = cache
 	end
-	local nameCache = cache[name]
+	local nameCache = cache[name] ---@type ChatEmotesLib-1.0_SearchCache|boolean
 	if not nameCache then
 		if emotes then
 			nameCache = {}
@@ -332,8 +327,9 @@ end
 ---@param path string
 ---@param folder string
 ---@param file any
+---@param index number
 ---@return ChatEmotesLib-1.0_Emote
-local function ProcessEmote(package, path, folder, file)
+local function ProcessEmote(package, path, folder, file, index)
 	local name
 	local filePath
 	local pattern
@@ -373,6 +369,7 @@ local function ProcessEmote(package, path, folder, file)
 	return setmetatable({
 		package = package,
 		folder = folder,
+		index = index,
 		name = name,
 		pattern = pattern,
 		file = filePath,
@@ -401,9 +398,9 @@ local function ProcessPackageEmotes(package, path, emotes)
 	local icons
 	for folder, files in pairs(emotes) do
 		if type(files) == "table" then
-			for _, file in ipairs(files) do
+			for index, file in ipairs(files) do
 				if type(file) == "table" or type(file) == "string" then
-					local emote = ProcessEmote(package, path, folder, file)
+					local emote = ProcessEmote(package, path, folder, file, index)
 					allEmotes[0] = allEmotes[0] + 1
 					allEmotes[allEmotes[0]] = emote
 					if not icons then
@@ -479,7 +476,7 @@ end
 
 ---@param name string
 ---@param customFilter? function
----@return ChatEmotesLib-1.0_Emote
+---@return ChatEmotesLib-1.0_Emote? emote
 function CEL.GetEmoteSearch(name, customFilter)
 	customFilter = customFilter or CEL.filter.nameFindTextStartsWithCaseless
 	local emotes, weights, cached = CEL.GetEmotesSearch(name, customFilter)
@@ -597,7 +594,7 @@ local function ReplaceEmotesInText(text, height, links, maxReplacements)
 				if emote then
 
 					local emoteText = CEL.SafeReplace(subText, nil, emote, height, links)
-					subText = { strsub(text, 1, emoteFrom - 1), emoteText, strsub(text, emoteTo + 1) }
+					local subText = { strsub(text, 1, emoteFrom - 1), emoteText, strsub(text, emoteTo + 1) }
 					text = table.concat(subText, "")
 					emoteTo = emoteFrom + strlen(emoteText) - 1
 
@@ -637,7 +634,7 @@ local function ReplaceEmotesInText(text, height, links, maxReplacements)
 			if emote then
 
 				local emoteText = CEL.SafeReplace(subText, nil, emote, height, links)
-				subText = { strsub(text, 1, emoteFrom - 1), emoteText, strsub(text, emoteTo + 1) }
+				local subText = { strsub(text, 1, emoteFrom - 1), emoteText, strsub(text, emoteTo + 1) }
 				text = table.concat(subText, "")
 				emoteTo = emoteFrom + strlen(emoteText) - 1
 
@@ -645,7 +642,7 @@ local function ReplaceEmotesInText(text, height, links, maxReplacements)
 					replacedUnicodeEmotes = { [0] = 0 }
 				end
 				replacedUnicodeEmotes[0] = replacedUnicodeEmotes[0] + 1
-				replacedUnicodeEmotes[replacedUnicodeEmotes[0]] = emote
+				replacedUnicodeEmotes[replacedUnicodeEmotes[0]] = emote ---@diagnostic disable-line: assign-type-mismatch
 
 				replaced = replaced + 1
 				if maxReplacements and maxReplacements - replaced == 0 then
@@ -672,7 +669,7 @@ end
 ---@param height? number
 ---@param useLinks? boolean
 ---@param usedEmotes? boolean
----@return string|nil, ChatEmotesLib-1.0_Emote[]
+---@return string?, ChatEmotesLib-1.0_Emote[]?
 function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes, maxReplacements)
 	local segments, ignore, length = SafeSplit(text)
 	if length == 0 then
@@ -693,13 +690,13 @@ function CEL.ReplaceEmotesInText(text, height, useLinks, usedEmotes, maxReplacem
 					if replacedEmotes then
 						for j = 1, replacedEmotes[0] do
 							emotes[0] = emotes[0] + 1
-							emotes[emotes[0]] = replacedEmotes[j]
+							emotes[emotes[0]] = replacedEmotes[j] ---@diagnostic disable-line: assign-type-mismatch
 						end
 					end
 					if replacedUnicodeEmotes then
 						for j = 1, replacedUnicodeEmotes[0] do
 							emotes[0] = emotes[0] + 1
-							emotes[emotes[0]] = replacedUnicodeEmotes[j]
+							emotes[emotes[0]] = replacedUnicodeEmotes[j] ---@diagnostic disable-line: assign-type-mismatch
 						end
 					end
 				end
@@ -746,6 +743,17 @@ function CEL.GetEmoteFromLink(link)
 		return
 	end
 	return CEL.GetEmoteSearch(arg2, CEL.filter.sameName), arg2
+end
+
+if OLDMINOR == 1 then
+
+	-- we need to add the index for the emote (it's not ideal but better than a nil-property)
+	for index, emote in pairs(CEL.emotes) do
+		if not emote.index then
+			emote.index = index
+		end
+	end
+
 end
 
 --[=[

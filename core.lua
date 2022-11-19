@@ -322,7 +322,7 @@ local AutoCompleteFontPresets = {
 
 local AutoCompleteFontPresetFallback = AutoCompleteFontPresets[2]
 
----@param fontObjectPreset AutoCompleteFontPreset
+---@param fontObjectPreset? AutoCompleteFontPreset
 local function AutoCompleteFontObjectPresetFallback(fontObjectPreset)
 	if DB then
 		if fontObjectPreset then
@@ -352,7 +352,7 @@ local AutoComplete do
 	local BUTTON_PADDING_X = 30
 	local BUTTON_PADDING_Y = 35 - 10
 
-	---@class AutoCompleteFrame : Frame
+	---@class AutoCompleteFrame : Frame, BackdropTemplate
 	---@field public Instructions FontString
 	---@field public Buttons AutoCompleteButton[]
 	---@field public editBox ChatFrameEditBox
@@ -362,7 +362,7 @@ local AutoComplete do
 	---@field public fontObjectPreset AutoCompleteFontPreset
 	---@field public disallowAutoComplete boolean
 	---@field public selectedIndex number
-	---@field public hasInsertedEmote boolean
+	---@field public hasInsertedEmote boolean|nil
 
 	---@class AutoCompleteButton : Button
 	---@field public Text FontString
@@ -375,7 +375,7 @@ local AutoComplete do
 	---@field public from number
 	---@field public to number
 
-	AutoComplete = CreateFrame("Frame", "VladsChatEmotesAutoCompleteFrame", UIParent, "TooltipBackdropTemplate")
+	AutoComplete = CreateFrame("Frame", "VladsChatEmotesAutoCompleteFrame", UIParent, "TooltipBackdropTemplate") ---@diagnostic disable-line: cast-local-type
 
 	---@param text string
 	---@param pos number
@@ -451,7 +451,7 @@ local AutoComplete do
 				results[index] = {
 					priority = priority,
 					name = emote.name,
-					emote = emote,
+					emote = emote, ---@diagnostic disable-line: assign-type-mismatch
 					from = sfrom,
 					to = sto,
 				}
@@ -496,6 +496,7 @@ local AutoComplete do
 		do
 			for i = 1, AUTOCOMPLETE_MAX_BUTTONS do
 				local prevButton = AutoComplete.Buttons[i - 1]
+				---@diagnostic disable-next-line: assign-type-mismatch
 				local button = CreateFrame("Button", format("$parentButton%d", i), AutoComplete, "AutoCompleteButtonTemplate") ---@type AutoCompleteButton
 				button.Text = _G[format("%sText", button:GetName())]
 				button:Hide()
@@ -716,7 +717,7 @@ local AutoComplete do
 		return self.fontObjectPreset
 	end
 
-	---@param fontObjectPreset AutoCompleteFontPreset
+	---@param fontObjectPreset? AutoCompleteFontPreset
 	function AutoComplete:SetFontObjectPreset(fontObjectPreset)
 		fontObjectPreset = AutoCompleteFontObjectPresetFallback(fontObjectPreset)
 		if self.fontObjectPreset == fontObjectPreset then
@@ -879,9 +880,9 @@ local function GetRandomEmote()
 	return emotes[index]
 end
 
-local function CreateUI(frameName) end ---@return ChatEmotesUIMixin
-local function CreateButton(frameName) end ---@return ChatEmotesUIButton
-local function CreateConfig(frameName) end ---@return ChatEmotesUIConfigMixin
+local CreateUI
+local CreateButton
+local CreateConfig
 
 do
 
@@ -945,7 +946,7 @@ do
 		end)
 	end
 
-	---@type ChatEmotesUIScrollCollectionMixin
+	---@class ChatEmotesUIScrollCollectionMixin
 	local UIScrollCollectionMixin = CreateFromMixins(CallbackRegistryMixin)
 
 	UIScrollCollectionMixin:GenerateCallbackEvents({
@@ -974,7 +975,7 @@ do
 
 	---@class ChatEmotesUIScrollBoxEmoteButtonMixin : Button
 
-	---@type ChatEmotesUIScrollBoxEmoteButtonMixin
+	---@class ChatEmotesUIScrollBoxEmoteButtonMixin
 	local UIScrollBoxEmoteButtonMixin = {}
 
 	local ScrollBoxEmoteButtonSize = 30
@@ -1080,8 +1081,9 @@ do
 
 	---@class ChatEmotesUIMixin : Frame
 	---@field public Inset Frame
+	---@field public NineSlice Frame
 
-	---@type ChatEmotesUIMixin
+	---@class ChatEmotesUIMixin
 	local UIMixin = {}
 
 	function UIMixin:OnLoad()
@@ -1142,7 +1144,7 @@ do
 	end
 
 	function UIMixin:OnHide()
-		local point, relativeTo, relativePoint, x, y = self:GetPoint()
+		local point, relativeTo, relativePoint, x, y = self:GetPoint(1)
 		if not point then
 			return
 		end
@@ -1233,12 +1235,11 @@ do
 				end
 			end
 			-- self.Log.Search.ScrollBox:ScrollToElementDataIndex(1)
-			local pendingSearch = self.pendingSearch
+			local pendingSearch = self.pendingSearch ---@type ChatEmotesLib-1.0_Emote
 			if pendingSearch then
 				self.pendingSearch = nil
-				---@param elementData ChatEmotesLib-1.0_Emote
 				local found = self.Log.Search.ScrollBox:ScrollToElementDataByPredicate(
-					function(elementData)
+					function(elementData) ---@param elementData ChatEmotesLib-1.0_Emote
 						return elementData == pendingSearch
 					end,
 					ScrollBoxConstants.AlignCenter,
@@ -1384,12 +1385,36 @@ do
 		end
 	end
 
+	local PackageSortOrder = {
+		["Discord"] = 1,
+		["BTTV"] = 2,
+		["Twitch"] = 3,
+		FALLBACK = 1000,
+	}
+
+	---@param a ChatEmotesLib-1.0_Emote
+	---@param b ChatEmotesLib-1.0_Emote
+	local function SortEmotesForBrowsing(a, b)
+		local x = PackageSortOrder[a.package] or PackageSortOrder.FALLBACK ---@type number|string
+		local y = PackageSortOrder[b.package] or PackageSortOrder.FALLBACK ---@type number|string
+		if x == y then
+			x = a.folder
+			y = b.folder
+			if x == y then
+				return a.index < b.index
+			end
+			return x < y
+		end
+		return x < y
+	end
+
 	---@param emotes ChatEmotesLib-1.0_Emote[]
 	function UIMixin:SetEmotes(emotes)
 		self.logDataProvider:Flush()
 		if not emotes or not emotes[1] then
 			return
 		end
+		table.sort(emotes, SortEmotesForBrowsing)
 		self.logDataProvider:InsertTableRange(emotes, 1, emotes[0])
 	end
 
@@ -1408,8 +1433,9 @@ do
 		end)
 	end
 
+	---@param frameName string
 	function CreateUI(frameName)
-		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@type ChatEmotesUIMixin
+		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@class ChatEmotesUIMixin
 		Mixin(frame, UIMixin)
 		frame.TitleBar = CreateFrame("Frame", nil, frame, "PanelDragBarTemplate")
 		frame.TitleBar:SetHeight(32)
@@ -1493,7 +1519,7 @@ do
 
 	---@class ChatEmotesUIButtonMixin : Button
 
-	---@type ChatEmotesUIButtonMixin
+	---@class ChatEmotesUIButtonMixin
 	local UIButtonMixin = {}
 
 	function UIButtonMixin:OnLoad()
@@ -1544,7 +1570,7 @@ do
 		if not DB.options.unlockButton then
 			return
 		end
-		local point, relativeTo, relativePoint, x, y = self:GetPoint()
+		local point, relativeTo, relativePoint, x, y = self:GetPoint(1)
 		if not point then
 			return
 		end
@@ -1620,8 +1646,9 @@ do
 
 	---@class ChatEmotesUIButton : ChatEmotesUIButtonMixin
 
+	---@param frameName string
 	function CreateButton(frameName)
-		local button = CreateFrame("Button", frameName, UIParent) ---@type ChatEmotesUIButtonMixin
+		local button = CreateFrame("Button", frameName, UIParent) ---@class ChatEmotesUIButton
 		Mixin(button, UIButtonMixin)
 		button.Text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		button.Text:SetJustifyH("CENTER")
@@ -1640,7 +1667,7 @@ do
 	---@field public Inset Frame
 	---@field public Options ConfigWidget[]
 
-	---@type ChatEmotesUIConfigMixin
+	---@class ChatEmotesUIConfigMixin
 	local UIConfigMixin = {}
 
 	function UIConfigMixin:OnLoad()
@@ -1965,8 +1992,9 @@ do
 		return InputFactory:FinalizeOption(frame, checkBox)
 	end
 
+	---@param frameName string
 	function CreateConfig(frameName)
-		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@type ChatEmotesUIConfigMixin
+		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@class ChatEmotesUIConfigMixin
 		Mixin(frame, UIConfigMixin)
 		frame.TitleBar = CreateFrame("Frame", nil, frame, "PanelDragBarTemplate")
 		frame.TitleBar:SetHeight(32)
@@ -2098,7 +2126,7 @@ do
 				for i, fontObjectPreset in ipairs(AutoCompleteFontPresets) do
 					text[i] = format("%d = %s", fontObjectPreset.id, fontObjectPreset.text)
 				end
-				text = table.concat(text, ", ")
+				text = table.concat(text, ", ") ---@diagnostic disable-line: cast-local-type
 				autoCompletePreset.Text:SetText(text)
 
 				function autoCompletePreset:CanSave()

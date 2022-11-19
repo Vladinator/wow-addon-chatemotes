@@ -1026,7 +1026,7 @@ local function utf8gsub(str, regex, repl, limit)
 end
 
 local MAJOR, MINOR = "ChatEmotesLibUTF8-1.0", 1 -- avoid potential collision with others
-local UTF8, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@class UTF8
+local UTF8, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@class ChatEmotesLibUTF8-1.0
 if not UTF8 then return end
 UTF8.len     = utf8len
 UTF8.sub     = utf8sub
