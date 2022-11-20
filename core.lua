@@ -872,10 +872,35 @@ local function ChatFrameOnHyperlinkLeave(self, link, text)
 	GameTooltip:Hide()
 end
 
+local PackageSortOrder = {
+	["Discord"] = 1,
+	["BTTV"] = 2,
+	["Twitch"] = 3,
+	FALLBACK = 1000,
+}
+
+---@param a ChatEmotesLib-1.0_Emote
+---@param b ChatEmotesLib-1.0_Emote
+local function SortEmotes(a, b)
+	local x = PackageSortOrder[a.package] or PackageSortOrder.FALLBACK ---@type number|string
+	local y = PackageSortOrder[b.package] or PackageSortOrder.FALLBACK ---@type number|string
+	if x == y then
+		x = a.folder
+		y = b.folder
+		if x == y then
+			return a.index < b.index
+		end
+		return x < y
+	end
+	return x < y
+end
+
+---@type ChatEmotesLib-1.0_Emote[]
+local sortedEmotes
+
 local function GetRandomEmote()
-	local emotes = CEL.GetEmotes()
-	local index = random(1, min(100, max(1, emotes[0])))
-	return emotes[index]
+	local index = random(1, min(100, max(1, #sortedEmotes)))
+	return sortedEmotes[index]
 end
 
 local CreateUI
@@ -1092,7 +1117,7 @@ do
 		self:SetClampedToScreen(true)
 		self:SetSize(DefaultPanelWidth, DefaultPanelHeight)
 		ButtonFrameTemplate_HidePortrait(self) ---@diagnostic disable-line: undefined-global
-		self.NineSlice:SetPoint("TOPLEFT", -5, 0)
+		self.NineSlice:SetPoint("TOPLEFT", -1, 0)
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self.ResizeButton:Init(self, MinPanelWidth, MinPanelHeight, MaxPanelWidth, MaxPanelHeight) ---@diagnostic disable-line: undefined-field
@@ -1348,36 +1373,12 @@ do
 		end
 	end
 
-	local PackageSortOrder = {
-		["Discord"] = 1,
-		["BTTV"] = 2,
-		["Twitch"] = 3,
-		FALLBACK = 1000,
-	}
-
-	---@param a ChatEmotesLib-1.0_Emote
-	---@param b ChatEmotesLib-1.0_Emote
-	local function SortEmotesForBrowsing(a, b)
-		local x = PackageSortOrder[a.package] or PackageSortOrder.FALLBACK ---@type number|string
-		local y = PackageSortOrder[b.package] or PackageSortOrder.FALLBACK ---@type number|string
-		if x == y then
-			x = a.folder
-			y = b.folder
-			if x == y then
-				return a.index < b.index
-			end
-			return x < y
-		end
-		return x < y
-	end
-
 	---@param emotes ChatEmotesLib-1.0_Emote[]
 	function UIMixin:SetEmotes(emotes)
 		self.logDataProvider:Flush()
 		if not emotes or not emotes[1] then
 			return
 		end
-		table.sort(emotes, SortEmotesForBrowsing)
 		self.logDataProvider:InsertTableRange(emotes, 1, emotes[0])
 	end
 
@@ -1495,7 +1496,6 @@ do
 		self:SetClampedToScreen(true)
 		self:UpdatePosition()
 		self:UpdateTexture()
-		C_Timer.After(1, function() self:UpdateTexture() end)
 		self:SetScript("OnClick", self.OnClick)
 		self:SetScript("OnEnable", self.OnEnable)
 		self:SetScript("OnDisable", self.OnDisable)
@@ -1508,9 +1508,8 @@ do
 	end
 
 	function UIButtonMixin:UpdateTexture()
-		local emotes = CEL.GetEmotes()
 		local text
-		if not emotes or not emotes[1] then
+		if not sortedEmotes or not sortedEmotes[1] then
 			text = NO_EMOTE_MARKUP_FALLBACK
 		else
 			local emote = GetRandomEmote()
@@ -1644,7 +1643,7 @@ do
 		self:SetSize(DefaultPanelWidth, DefaultPanelHeight)
 		self:SetPoint("CENTER")
 		ButtonFrameTemplate_HidePortrait(self) ---@diagnostic disable-line: undefined-global
-		self.NineSlice:SetPoint("TOPLEFT", -5, 0)
+		self.NineSlice:SetPoint("TOPLEFT", -1, 0)
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self:SetTitle(L.CHAT_EMOTES_OPTIONS) ---@diagnostic disable-line: undefined-field
@@ -2003,12 +2002,12 @@ do
 				---@param newEmote boolean
 				function emoteScale:Update(newEmote)
 					if newEmote or not self.emote then
-						self:RandomEmote()
+						self:GetRandomEmote()
 					end
 					self:UpdateEmote()
 				end
 
-				function emoteScale:RandomEmote()
+				function emoteScale:GetRandomEmote()
 					local emote = GetRandomEmote()
 					self.emote = emote
 					return emote
@@ -2182,6 +2181,8 @@ local function InitDB()
 end
 
 local function Init()
+	sortedEmotes = CEL.GetEmotes()
+	table.sort(sortedEmotes, SortEmotes)
 	UpdateChannelsReduntant()
 	for _, event in ipairs(supportedChatEvents) do
 		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
@@ -2233,16 +2234,18 @@ function addon:ADDON_LOADED(event, name)
 		return
 	end
 	addon:UnregisterEvent(event)
-	InitDB()
-	Init()
-	InitChannelMonitor()
+	C_Timer.After(0, function()
+		InitDB()
+		Init()
+		InitChannelMonitor()
+	end)
 end
 
 function addon:TogglePicker(showEmote)
 	if not addonFrame then
 		addonFrame = CreateUI("VladsChatEmotesFrame")
 		table.insert(UISpecialFrames, addonFrame:GetName()) ---@diagnostic disable-line: undefined-global
-		addonFrame:SetEmotes(CEL.GetEmotes())
+		addonFrame:SetEmotes(sortedEmotes)
 	end
 	if showEmote then
 		addonFrame:ShowEmote(showEmote)
