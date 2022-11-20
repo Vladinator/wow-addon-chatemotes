@@ -3,8 +3,6 @@ if WOW_PROJECT_ID ~= WOW_PROJECT_MAINLINE then return end
 local CEL = LibStub and LibStub("ChatEmotesLib-1.0", true) ---@type ChatEmotesLib-1.0
 if not CEL then return end
 
-local IS_DF = select(4, GetBuildInfo()) >= 100000 -- TODO: DF
-
 local _G = _G
 local strlenutf8 = _G.strlenutf8
 
@@ -35,7 +33,7 @@ local L = ns.L
 
 local addon = CreateFrame("Frame")
 local addonFrame ---@type ChatEmotesUIMixin
-local addonButton ---@type ChatEmotesUIButton
+local addonButton ---@type ChatEmotesUIButtonMixin
 local addonConfigFrame ---@type ChatEmotesUIConfigMixin
 
 local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 132048, 16, 10, -1, 0, 16, 16, 4, 13, 0, 16)
@@ -934,7 +932,7 @@ do
 	---@field public ScrollToElementData function(elementData, alignment, noInterpolation)
 	---@field public ScrollToElementDataByPredicate function(predicate, alignment, noInterpolation)
 
-	---@class WowScrollBoxList : ScrollBoxListViewMixin
+	---@class WowScrollBoxList : ScrollBoxListViewMixin, Frame
 
 	---@class ChatEmotesUIScrollCollectionMixin : CallbackRegistryMixin
 
@@ -1094,17 +1092,11 @@ do
 		self:SetClampedToScreen(true)
 		self:SetSize(DefaultPanelWidth, DefaultPanelHeight)
 		ButtonFrameTemplate_HidePortrait(self) ---@diagnostic disable-line: undefined-global
-		if IS_DF then
-			self.NineSlice:SetPoint("TOPLEFT", -5, 0)
-		end
+		self.NineSlice:SetPoint("TOPLEFT", -5, 0)
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self.ResizeButton:Init(self, MinPanelWidth, MinPanelHeight, MaxPanelWidth, MaxPanelHeight) ---@diagnostic disable-line: undefined-field
-		if IS_DF then
-			self:SetTitle(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
-		else
-			self.TitleText:SetText(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
-		end
+		self:SetTitle(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
 		self.showingArguments = false
 		self.filterDataProvider = CreateDataProvider()
 		self.logDataProvider = CreateDataProvider()
@@ -1216,7 +1208,8 @@ do
 		self.Log.Bar.Label:SetText()
 		self.Log.Bar.SearchBox:HookScript("OnTextChanged", function()
 			self.searchDataProvider:Flush()
-			local text = self.Log.Bar.SearchBox:GetText()
+			---@diagnostic disable-next-line: assign-type-mismatch
+			local text = self.Log.Bar.SearchBox:GetText() ---@type string
 			local empty = not text or text:len() == 0 or text:trim():len() < 2 -- min length requirement before searching
 			if empty then
 				self:DisplayEvents()
@@ -1292,33 +1285,18 @@ do
 			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
 			view:SetElementExtent(ScrollBoxEmoteButtonSize)
-			if IS_DF then
-				---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
-				---@param emote ChatEmotesLib-1.0_Emote
-				view:SetElementInitializer("Button", function(button, emote)
-					if not button.isInitialized then
-						button.isInitialized = true
-						Mixin(button, UIScrollBoxEmoteButtonMixin)
-						button:OnLoad()
-						-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) LocateInLog(emote) end)
-						-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInLog(emote) end)
-					end
-					button:Init(emote)
-				end)
-			else
-				---@param factory fun(name: string): ChatEmotesUIScrollBoxEmoteButtonMixin, boolean
-				---@param emote ChatEmotesLib-1.0_Emote
-				view:SetElementFactory(function(factory, emote)
-					local button, isNew = factory("Button")
-					if isNew then
-						Mixin(button, UIScrollBoxEmoteButtonMixin)
-						button:OnLoad()
-						-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) AddEventToFilter(self.Filter.ScrollBox, emote) end)
-						-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInSearch(emote, emote.name) end)
-					end
-					button:Init(emote)
-				end)
-			end
+			---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
+			---@param emote ChatEmotesLib-1.0_Emote
+			view:SetElementInitializer("Button", function(button, emote)
+				if not button.isInitialized then
+					button.isInitialized = true
+					Mixin(button, UIScrollBoxEmoteButtonMixin)
+					button:OnLoad()
+					-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) LocateInLog(emote) end)
+					-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInLog(emote) end)
+				end
+				button:Init(emote)
+			end)
 			local pad = 2
 			local spacing = 2
 			view:SetPadding(pad, pad, pad, pad, spacing, spacing)
@@ -1347,33 +1325,18 @@ do
 			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
 			view:SetElementExtent(ScrollBoxEmoteButtonSize)
-			if IS_DF then
-				---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
-				---@param emote ChatEmotesLib-1.0_Emote
-				view:SetElementInitializer("Button", function(button, emote)
-					if not button.isInitialized then
-						button.isInitialized = true
-						Mixin(button, UIScrollBoxEmoteButtonMixin)
-						button:OnLoad()
-						-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) LocateInLog(emote) end)
-						-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInLog(emote) end)
-					end
-					button:Init(emote)
-				end)
-			else
-				---@param factory fun(name: string): ChatEmotesUIScrollBoxEmoteButtonMixin, boolean
-				---@param emote ChatEmotesLib-1.0_Emote
-				view:SetElementFactory(function(factory, emote)
-					local button, isNew = factory("Button")
-					if isNew then
-						Mixin(button, UIScrollBoxEmoteButtonMixin)
-						button:OnLoad()
-						-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) LocateInLog(emote) end)
-						-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInLog(emote) end)
-					end
-					button:Init(emote)
-				end)
-			end
+			---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
+			---@param emote ChatEmotesLib-1.0_Emote
+			view:SetElementInitializer("Button", function(button, emote)
+				if not button.isInitialized then
+					button.isInitialized = true
+					Mixin(button, UIScrollBoxEmoteButtonMixin)
+					button:OnLoad()
+					-- button.HideButton:SetScript("OnMouseDown", function(button, buttonName) LocateInLog(emote) end)
+					-- button:SetScript("OnDoubleClick", function(button, buttonName) LocateInLog(emote) end)
+				end
+				button:Init(emote)
+			end)
 			local pad = 2
 			local spacing = 2
 			view:SetPadding(pad, pad, pad, pad, spacing, spacing)
@@ -1475,12 +1438,14 @@ do
 		frame.Log.Events = CreateFrame("Frame", nil, frame.Log)
 		frame.Log.Events:SetPoint("TOPLEFT", frame.Log.Bar, "BOTTOMLEFT", 0, -2)
 		frame.Log.Events:SetPoint("BOTTOMRIGHT")
+		---@diagnostic disable-next-line: assign-type-mismatch
 		frame.Log.Events.ScrollBox = CreateFrame("Frame", nil, frame.Log.Events, "WowScrollBoxList") ---@type WowScrollBoxList
 		frame.Log.Events.ScrollBox:SetPoint("TOPLEFT")
 		frame.Log.Events.ScrollBox:SetPoint("BOTTOMRIGHT", -25, 0)
 		frame.Log.Events.ScrollBox.Background = frame.Log.Events.ScrollBox:CreateTexture(nil, "BACKGROUND")
 		frame.Log.Events.ScrollBox.Background:SetAllPoints()
 		frame.Log.Events.ScrollBox.Background:SetColorTexture(0.03, 0.03, 0.03, 1)
+		---@diagnostic disable-next-line: assign-type-mismatch
 		frame.Log.Events.ScrollBar = CreateFrame("Frame", nil, frame.Log.Events, "WowTrimScrollBar") ---@type ChatEmotesUIScrollCollectionMixin
 		frame.Log.Events.ScrollBar:SetPoint("TOPLEFT", frame.Log.Events.ScrollBox, "TOPRIGHT", 0, -3)
 		frame.Log.Events.ScrollBar:SetPoint("BOTTOMLEFT", frame.Log.Events.ScrollBox, "BOTTOMRIGHT", 0, 0)
@@ -1489,12 +1454,14 @@ do
 		frame.Log.Search = CreateFrame("Frame", nil, frame.Log)
 		frame.Log.Search:SetPoint("TOPLEFT", frame.Log.Bar, "BOTTOMLEFT", 0, -2)
 		frame.Log.Search:SetPoint("BOTTOMRIGHT")
+		---@diagnostic disable-next-line: assign-type-mismatch
 		frame.Log.Search.ScrollBox = CreateFrame("Frame", nil, frame.Log.Search, "WowScrollBoxList") ---@type WowScrollBoxList
 		frame.Log.Search.ScrollBox:SetPoint("TOPLEFT")
 		frame.Log.Search.ScrollBox:SetPoint("BOTTOMRIGHT", -25, 0)
 		frame.Log.Search.ScrollBox.Background = frame.Log.Search.ScrollBox:CreateTexture(nil, "BACKGROUND")
 		frame.Log.Search.ScrollBox.Background:SetAllPoints()
 		frame.Log.Search.ScrollBox.Background:SetColorTexture(0.03, 0.03, 0.03, 1)
+		---@diagnostic disable-next-line: assign-type-mismatch
 		frame.Log.Search.ScrollBar = CreateFrame("Frame", nil, frame.Log.Search, "WowTrimScrollBar") ---@type ChatEmotesUIScrollCollectionMixin
 		frame.Log.Search.ScrollBar:SetPoint("TOPLEFT", frame.Log.Search.ScrollBox, "TOPRIGHT", 0, -3)
 		frame.Log.Search.ScrollBar:SetPoint("BOTTOMLEFT", frame.Log.Search.ScrollBox, "BOTTOMRIGHT", 0, 0)
@@ -1644,11 +1611,9 @@ do
 		self:UpdatePosition()
 	end
 
-	---@class ChatEmotesUIButton : ChatEmotesUIButtonMixin
-
 	---@param frameName string
 	function CreateButton(frameName)
-		local button = CreateFrame("Button", frameName, UIParent) ---@class ChatEmotesUIButton
+		local button = CreateFrame("Button", frameName, UIParent) ---@class ChatEmotesUIButtonMixin
 		Mixin(button, UIButtonMixin)
 		button.Text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		button.Text:SetJustifyH("CENTER")
@@ -1665,6 +1630,7 @@ do
 
 	---@class ChatEmotesUIConfigMixin : Frame
 	---@field public Inset Frame
+	---@field public NineSlice Frame
 	---@field public Options ConfigWidget[]
 
 	---@class ChatEmotesUIConfigMixin
@@ -1678,16 +1644,10 @@ do
 		self:SetSize(DefaultPanelWidth, DefaultPanelHeight)
 		self:SetPoint("CENTER")
 		ButtonFrameTemplate_HidePortrait(self) ---@diagnostic disable-line: undefined-global
-		if IS_DF then
-			self.NineSlice:SetPoint("TOPLEFT", -5, 0)
-		end
+		self.NineSlice:SetPoint("TOPLEFT", -5, 0)
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
-		if IS_DF then
-			self:SetTitle(L.CHAT_EMOTES_OPTIONS) ---@diagnostic disable-line: undefined-field
-		else
-			self.TitleText:SetText(L.CHAT_EMOTES_OPTIONS) ---@diagnostic disable-line: undefined-field
-		end
+		self:SetTitle(L.CHAT_EMOTES_OPTIONS) ---@diagnostic disable-line: undefined-field
 		self:UpdateScrollFrame()
 	end
 
@@ -1702,20 +1662,10 @@ do
 		local scrollFrame = self.ScrollFrame
 		FauxScrollFrame_Update(scrollFrame, numItems, numToDisplay, fakeItemHeight, nil, nil, nil, nil, nil, nil, true) ---@diagnostic disable-line: undefined-global
 		if numItems > numToDisplay then
-			if not IS_DF then
-				scrollFrame.ScrollBarTop:Show()
-				scrollFrame.ScrollBarBottom:Show()
-				scrollFrame.ScrollBarMiddle:Show()
-			end
-			scrollFrame.ScrollBar:Show()
+			scrollFrame.ScrollBar:Show() ---@diagnostic disable-line: undefined-field
 		else
-			if not IS_DF then
-				scrollFrame.ScrollBarTop:Hide()
-				scrollFrame.ScrollBarBottom:Hide()
-				scrollFrame.ScrollBarMiddle:Hide()
-			end
-			scrollFrame.ScrollBar:Hide()
-			scrollFrame.ScrollBar:SetValue(0)
+			scrollFrame.ScrollBar:Hide() ---@diagnostic disable-line: undefined-field
+			scrollFrame.ScrollBar:SetValue(0) ---@diagnostic disable-line: undefined-field
 		end
 	end
 
@@ -1736,7 +1686,9 @@ do
 	---@field public UpdateState function
 	---@field public UpdateOtherStates function
 	---@field public value? any
+	---@field public Label? FontString
 
+	---@class ConfigInputFactory
 	local InputFactory = {}
 
 	do
@@ -1940,6 +1892,7 @@ do
 
 	---@return ConfigWidget
 	function InputFactory:CreateEditBox(frame, cvar, label)
+		---@diagnostic disable-next-line: assign-type-mismatch
 		local editBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate") ---@type ConfigWidget
 		editBox.cvar = cvar
 		editBox:SetSize(48, 32)
@@ -1977,6 +1930,7 @@ do
 		fontString:SetSize(0, 20)
 		fontString:SetJustifyH("LEFT")
 		fontString:SetJustifyV("TOP")
+		---@diagnostic disable-next-line: return-type-mismatch
 		return InputFactory:FinalizeOption(frame, fontString)
 	end
 
@@ -1985,10 +1939,12 @@ do
 
 	---@return UICheckButtonTemplate
 	function InputFactory:CreateCheckBox(frame, cvar, label)
+		---@diagnostic disable-next-line: assign-type-mismatch
 		local checkBox = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate") ---@type UICheckButtonTemplate
 		checkBox.cvar = cvar
 		checkBox:SetSize(32, 32)
 		checkBox.Label = CreateLabel(frame, checkBox, label, -5, 0)
+		---@diagnostic disable-next-line: return-type-mismatch
 		return InputFactory:FinalizeOption(frame, checkBox)
 	end
 
@@ -2002,10 +1958,10 @@ do
 		frame.TitleBar:SetPoint("TOPRIGHT")
 		do -- frame.Options
 			frame.Options = {}
-			frame.ScrollFrame = CreateFrame("ScrollFrame", "$parentScrollFrame", frame, IS_DF and "FauxScrollFrameTemplate" or "ListScrollFrameTemplate")
+			frame.ScrollFrame = CreateFrame("ScrollFrame", "$parentScrollFrame", frame, "FauxScrollFrameTemplate")
 			frame.ScrollFrame.ScrollBarMiddle = _G[format("%s%s", frame.ScrollFrame:GetName(), "Middle")] ---@type Texture
-			frame.ScrollFrame.ScrollChildFrame.Options = frame.Options -- alias
-			frame.ScrollFrame.ScrollBar.scrollStep = 32
+			frame.ScrollFrame.ScrollChildFrame.Options = frame.Options ---@diagnostic disable-line: undefined-field -- alias
+			frame.ScrollFrame.ScrollBar.scrollStep = 32 ---@diagnostic disable-line: undefined-field
 			frame.ScrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 9, -29)
 			frame.ScrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 29)
 			do -- emoteScale
@@ -2197,7 +2153,7 @@ local function UpdateChannels()
 	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
 		local channels = { GetChatWindowChannels(i) }
 		for j = 1, #channels, 2 do
-			local channel, id = channels[j], channels[j + 1]
+			local channel, id = channels[j], channels[j + 1] ---@type string|number, number|string
 			activeChannels[channel] = id
 			activeChannels[id] = channel
 		end
