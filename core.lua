@@ -35,6 +35,7 @@ local addon = CreateFrame("Frame")
 local addonFrame ---@type ChatEmotesUIMixin
 local addonButton ---@type ChatEmotesUIButtonMixin
 local addonConfigFrame ---@type ChatEmotesUIConfigMixin
+local addonAnimator ---@type ChatEmotesAnimatorMixin
 
 local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 132048, 16, 10, -1, 0, 16, 16, 4, 13, 0, 16)
 local MAX_EMOTES_PER_MESSAGE = 59 -- 60 and above will result in malformed trailing emotes in the chat frame
@@ -127,8 +128,15 @@ local ignoreChannels = {
 ---@field public autoCompleteSource? function|nil
 ---@field public customAutoCompleteFunction? function|nil
 
+---@class ChatFrameLineMessageInfo
+---@field public message string
+
+---@class ChatFrameLine
+---@field public messageInfo ChatFrameLineMessageInfo
+
 ---@class ChatFrame : ScrollingMessageFrame
 ---@field public editBox ChatFrameEditBox
+---@field public visibleLines ChatFrameLine[]
 
 local supportedChatEvents = {
 	-- "CHAT_MSG_COMMUNITIES_CHANNEL", -- protected v Kstring
@@ -265,7 +273,7 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 	end
 	local height = GetHeightForChatFrame(self)
 	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, DB.options.emoteHover, true, MAX_EMOTES_PER_MESSAGE)
-	if newText then
+	if newText and usedEmotes then
 		if prevLineID ~= lineID then
 			prevLineID = lineID
 			LogEmoteStatistics(usedEmotes, guid)
@@ -437,7 +445,7 @@ local AutoComplete do
 		if not emotes then
 			return
 		end
-		if emotes[2] then
+		if emotes[2] and weights then
 			CEL.SortEmotes(emotes, weights)
 		end
 		local index = 0
@@ -467,7 +475,8 @@ local AutoComplete do
 		local editBox = AutoComplete.editBox
 		local result = self.result
 		local emote = result.emote
-		local text = editBox:GetText()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		local text = editBox:GetText() ---@type string
 		local prefix = strsub(text, 1, result.from - 1)
 		local suffix = strsub(text, result.to + 1)
 		local updatedText = format("%s%s%s", prefix, emote.name, suffix)
@@ -558,7 +567,7 @@ local AutoComplete do
 		self:UpdateAll()
 	end
 
-	---@param editBox ChatFrameEditBox
+	---@param editBox ChatFrameEditBox?
 	function AutoComplete:HideDropDown(editBox, force)
 		if not force and self.editBox ~= editBox then
 			return
@@ -588,8 +597,10 @@ local AutoComplete do
 		if not editBox then
 			return
 		end
-		local text = editBox:GetText()
-		local cursorPosition = editBox:GetUTF8CursorPosition()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		local text = editBox:GetText() ---@type string
+		---@diagnostic disable-next-line: assign-type-mismatch
+		local cursorPosition = editBox:GetUTF8CursorPosition() ---@type number
 		AutoComplete_UpdateResults(self, text, cursorPosition)
 	end
 
@@ -699,8 +710,10 @@ local AutoComplete do
 	---@param editBox ChatFrameEditBox
 	---@param char string
 	function AutoComplete:RemoveTrailingCharacter(editBox, char)
-		local index = editBox:GetCursorPosition()
-		local text = editBox:GetText()
+		---@diagnostic disable-next-line: assign-type-mismatch
+		local index = editBox:GetCursorPosition() ---@type number
+		---@diagnostic disable-next-line: assign-type-mismatch
+		local text = editBox:GetText() ---@type string
 		local mid = strsub(text, index, index)
 		if mid ~= char then
 			return
@@ -721,12 +734,12 @@ local AutoComplete do
 		if self.fontObjectPreset == fontObjectPreset then
 			return
 		end
-		self.Instructions:SetFontObject(fontObjectPreset.disabled)
+		self.Instructions:SetFontObject(fontObjectPreset.disabled) ---@diagnostic disable-line: param-type-mismatch
 		for _, button in pairs(self.Buttons) do
 			button:SetNormalFontObject(fontObjectPreset.normal)
 			button:SetHighlightFontObject(fontObjectPreset.highlight)
 		end
-		self.Instructions:SetHeight(self.Instructions:GetStringHeight())
+		self.Instructions:SetHeight(self.Instructions:GetStringHeight()) ---@diagnostic disable-line: param-type-mismatch
 		self.fontObjectPreset = fontObjectPreset
 	end
 
@@ -1156,7 +1169,7 @@ do
 		end
 		self:SetSize(width, height)
 		self:ClearAllPoints()
-		self:SetPoint(point, relativeTo, relativePoint, x, y)
+		self:SetPoint(point, relativeTo, relativePoint, x, y) ---@diagnostic disable-line: param-type-mismatch
 		self.MissingEmotePackage:SetShown(self.logDataProvider:GetSize() == 0)
 	end
 
@@ -1235,6 +1248,7 @@ do
 			self.searchDataProvider:Flush()
 			---@diagnostic disable-next-line: assign-type-mismatch
 			local text = self.Log.Bar.SearchBox:GetText() ---@type string
+			---@diagnostic disable-next-line: undefined-field
 			local empty = not text or text:len() == 0 or text:trim():len() < 2 -- min length requirement before searching
 			if empty then
 				self:DisplayEvents()
@@ -1242,7 +1256,8 @@ do
 			end
 			self:DisplaySearch()
 			local found = 0
-			text = text:trim()
+			---@diagnostic disable-next-line: undefined-field
+			text = text:trim() ---@type string
 			---@param elementData ChatEmotesLib-1.0_Emote
 			for index, elementData in self.logDataProvider:Enumerate() do
 				if self:TryAddToSearch(elementData, text) then
@@ -1417,9 +1432,9 @@ do
 		frame.StatusText:SetJustifyH("LEFT")
 		frame.StatusText:SetHeight(18)
 		frame.StatusText:SetPoint("BOTTOMLEFT", frame.ConfigButton, "BOTTOMRIGHT", 2, 0)
-		frame.StatusText:SetPoint("BOTTOMRIGHT", frame.ResizeButton, "BOTTOMLEFT", -2, 0)
+		frame.StatusText:SetPoint("BOTTOMRIGHT", frame.ResizeButton, "BOTTOMLEFT", -2, 0) ---@diagnostic disable-line: param-type-mismatch
 		frame.Log = CreateFrame("Frame", nil, frame)
-		frame.Log:SetPoint("TOPLEFT", frame.TitleBar, "BOTTOMLEFT", 8, 4) -- -32
+		frame.Log:SetPoint("TOPLEFT", frame.TitleBar, "BOTTOMLEFT", 8, 4) ---@diagnostic disable-line: param-type-mismatch
 		frame.Log:SetPoint("BOTTOMRIGHT", -9, 28)
 		frame.Log.Bar = CreateFrame("Frame", nil,frame.Log)
 		frame.Log.Bar:SetHeight(24)
@@ -1527,7 +1542,7 @@ do
 			point, relativeTo, relativePoint, x, y = oposition.point, oposition.relativeTo, oposition.relativePoint, oposition.x, oposition.y
 		end
 		self:ClearAllPoints()
-		self:SetPoint(point, relativeTo, relativePoint, x, y)
+		self:SetPoint(point, relativeTo, relativePoint, x, y) ---@diagnostic disable-line: param-type-mismatch
 		return point, relativeTo, relativePoint, x, y
 	end
 
@@ -1627,10 +1642,14 @@ do
 		return button
 	end
 
+	---@class FauxScrollFrameTemplate : Frame
+	---@field public ScrollChildFrame Frame
+
 	---@class ChatEmotesUIConfigMixin : Frame
 	---@field public Inset Frame
 	---@field public NineSlice Frame
 	---@field public Options ConfigWidget[]
+	---@field public ScrollFrame FauxScrollFrameTemplate
 
 	---@class ChatEmotesUIConfigMixin
 	local UIConfigMixin = {}
@@ -1863,7 +1882,7 @@ do
 					widget:HookScript("OnEnable", Common_OnEnable)
 					widget:HookScript("OnDisable", Common_OnDisable)
 					widget:HookScript("OnShow", Common_OnShow)
-					widget:HookScript("OnClick", Common_OnSave)
+					widget:HookScript("OnClick", Common_OnSave) ---@diagnostic disable-line: param-type-mismatch
 				end
 			end
 			local index = #frame.Options
@@ -1929,7 +1948,7 @@ do
 		fontString:SetSize(0, 20)
 		fontString:SetJustifyH("LEFT")
 		fontString:SetJustifyV("TOP")
-		---@diagnostic disable-next-line: return-type-mismatch
+		---@diagnostic disable-next-line: return-type-mismatch, param-type-mismatch
 		return InputFactory:FinalizeOption(frame, fontString)
 	end
 
@@ -1957,7 +1976,7 @@ do
 		frame.TitleBar:SetPoint("TOPRIGHT")
 		do -- frame.Options
 			frame.Options = {}
-			frame.ScrollFrame = CreateFrame("ScrollFrame", "$parentScrollFrame", frame, "FauxScrollFrameTemplate")
+			frame.ScrollFrame = CreateFrame("ScrollFrame", "$parentScrollFrame", frame, "FauxScrollFrameTemplate") ---@diagnostic disable-line: assign-type-mismatch
 			frame.ScrollFrame.ScrollBarMiddle = _G[format("%s%s", frame.ScrollFrame:GetName(), "Middle")] ---@type Texture
 			frame.ScrollFrame.ScrollChildFrame.Options = frame.Options ---@diagnostic disable-line: undefined-field -- alias
 			frame.ScrollFrame.ScrollBar.scrollStep = 32 ---@diagnostic disable-line: undefined-field
@@ -2024,7 +2043,8 @@ do
 						text = NO_EMOTE_MARKUP_FALLBACK
 					end
 					self.Preview:SetText(text)
-					local size = self.Preview:GetUnboundedStringWidth()
+					---@diagnostic disable-next-line: assign-type-mismatch
+					local size = self.Preview:GetUnboundedStringWidth() ---@type number
 					self.Preview:SetSize(size, size * (emote and emote.ratio or 1))
 					addonConfigFrame:UpdateScrollFrame()
 				end
@@ -2147,6 +2167,154 @@ local function CreateSlashCommand()
 	return CommandHandler
 end
 
+local CreateAnimator
+
+do
+
+	---@class ChatEmotesAnimatorMixin : Frame
+
+	local ANIMATION_PATTERN = "(|T(^:-)_(%d+)_(%d+):(.-)|t)"
+	local ANIMATION_FORMAT = "|T%s_%d_%d:%s|t"
+
+	---@param text string
+	---@return table<string, string>? replacements
+	local function ReplaceAnimationEmotes(text)
+		local replacements ---@type table<string, string>?
+		for emoteText, prefix, current, total, suffix in text:gmatch(ANIMATION_PATTERN) do
+			if not replacements then
+				replacements = {}
+			end
+			if not replacements[emoteText] then
+				if current >= total then
+					current = 1
+				else
+					current = current + 1
+				end
+				replacements[emoteText] = format(ANIMATION_FORMAT, prefix, current, total, suffix)
+			end
+		end
+		return replacements
+	end
+
+	---@param text string
+	---@return string? newText
+	local function GetNextAnimationFrame(text)
+		local replacements = ReplaceAnimationEmotes(text)
+		if not replacements then
+			return
+		end
+		for from, to in pairs(replacements) do
+			-- TODO: WIP
+			local pattern = CEL.TextToPattern(from)
+			text = CEL.ReplaceText(text, pattern, to)
+		end
+		return text
+	end
+
+	---@param button Button
+	---@return boolean? success
+	local function AnimateButton(button)
+		local text = button:GetText() ---@type string?
+		if not text then
+			return
+		end
+		local newText = GetNextAnimationFrame(text)
+		if not newText then
+			return
+		end
+		button:SetText(newText)
+		return true
+	end
+
+	---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
+	---@return boolean? success
+	local function AnimateFrameButton(button)
+		local emote = button.emote
+		if not emote or not emote.animated then
+			return
+		end
+		return AnimateButton(button)
+	end
+
+	---@param button AutoCompleteButton
+	---@return boolean? success
+	local function AnimateAutoCompleteButton(button)
+		local result = button.result
+		if not result then
+			return
+		end
+		local emote = result.emote
+		if not emote or not emote.animated then
+			return
+		end
+		return AnimateButton(button)
+	end
+
+	---@param line ChatFrameLine
+	---@return boolean? success
+	local function AnimateChatLine(line)
+		local messageInfo = line.messageInfo
+		if not messageInfo then
+			return
+		end
+		local text = messageInfo.message
+		if not text then
+			return
+		end
+		local newText = GetNextAnimationFrame(text)
+		if not newText then
+			return
+		end
+		messageInfo.message = newText -- TODO: WIP
+		return true
+	end
+
+	local elapsed = 0
+
+	---@param _ ChatEmotesAnimatorMixin
+	---@param e number
+	local function OnUpdate(_, e)
+
+		elapsed = elapsed + e
+
+		if elapsed < 1 then -- TODO: WIP
+			return
+		end
+
+		elapsed = 0
+
+		if addonFrame and addonFrame:IsShown() and addonFrame:IsVisible() then
+			addonFrame.Log.Events.ScrollBox:ForEachFrame(AnimateFrameButton)
+			addonFrame.Log.Search.ScrollBox:ForEachFrame(AnimateFrameButton)
+		end
+
+		if AutoComplete and AutoComplete:IsShown() and AutoComplete:IsVisible() then
+			for _, button in ipairs(AutoComplete.Buttons) do
+				if button and button:IsShown() and button:IsVisible() then
+					AnimateAutoCompleteButton(button)
+				end
+			end
+		end
+
+		for i = 1, NUM_CHAT_WINDOWS do
+			local chatFrame = _G[format("ChatFrame%d", i)] ---@type ChatFrame?
+			if chatFrame and chatFrame:IsShown() and chatFrame:IsVisible() then
+				for _, visibleLine in ipairs(chatFrame.visibleLines) do
+					AnimateChatLine(visibleLine)
+				end
+			end
+		end
+
+	end
+
+	function CreateAnimator()
+		---@diagnostic disable-next-line: cast-local-type
+		addonAnimator = CreateFrame("Frame") ---@class ChatEmotesAnimatorMixin
+		addonAnimator:SetScript("OnUpdate", OnUpdate)
+	end
+
+end
+
 local function UpdateChannels()
 	wipe(activeChannels)
 	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
@@ -2188,7 +2356,7 @@ local function Init()
 		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
 	end
 	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
-		local chatFrame = _G["ChatFrame" .. i] ---@type ChatFrame
+		local chatFrame = _G[format("ChatFrame%d", i)] ---@type ChatFrame?
 		if chatFrame then
 			local editBox = chatFrame.editBox
 			editBox:HookScript("OnTextChanged", ChatEditBoxOnChanged)
@@ -2204,6 +2372,7 @@ local function Init()
 		end
 	end
 	CreateSlashCommand()
+	CreateAnimator()
 	addonButton = CreateButton("VladsChatEmotesButton")
 end
 

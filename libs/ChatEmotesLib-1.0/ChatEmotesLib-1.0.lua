@@ -27,6 +27,7 @@ assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 ---@field public offsetT? number
 ---@field public offsetB? number
 ---@field public unicode? string
+---@field public animated? boolean
 
 ---@class ChatEmotesLib-1.0_SearchCache @v1.0 of the emote structure.
 ---@field public emotes ChatEmotesLib-1.0_Emote[]
@@ -283,12 +284,12 @@ CEL.emoteMetatable = CEL.emoteMetatable or {
 	end,
 }
 
----@type table<function, table<string, ChatEmotesLib-1.0_SearchCache>>
+---@type table<function, table<string, ChatEmotesLib-1.0_SearchCache|false|nil>>
 CEL.emoteSearchCache = CEL.emoteSearchCache or {}
 
 ---@param customFilter function
 ---@param name string
----@return ChatEmotesLib-1.0_SearchCache|nil
+---@return ChatEmotesLib-1.0_SearchCache|false|nil
 local function GetSearchFromCache(customFilter, name)
 	local cache = CEL.emoteSearchCache[customFilter]
 	if not cache then
@@ -345,6 +346,7 @@ local function ProcessEmote(package, path, folder, file, index)
 	local offsetT
 	local offsetB
 	local unicode
+	local animated
 	if type(file) == "table" then
 		name = file.name
 		filePath = format("%s/%s/%s", path, folder, file.file or name)
@@ -361,6 +363,7 @@ local function ProcessEmote(package, path, folder, file, index)
 		ignoreSuggestion = file.ignoreSuggestion
 		args = file.args
 		unicode = file.unicode
+		animated = file.animated
 	else
 		name = file
 		filePath = format("%s/%s/%s", path, folder, file)
@@ -385,6 +388,7 @@ local function ProcessEmote(package, path, folder, file, index)
 		offsetT = offsetT,
 		offsetB = offsetB,
 		unicode = unicode,
+		animated = animated,
 	}, CEL.emoteMetatable)
 end
 
@@ -407,7 +411,7 @@ local function ProcessPackageEmotes(package, path, emotes)
 						icons = { [0] = 0 }
 					end
 					icons[0] = icons[0] + 1
-					icons[icons[0]] = emote
+					icons[icons[0]] = emote ---@diagnostic disable-line: assign-type-mismatch
 					local unicode = emote.unicode
 					if unicode and strbyteutf8(unicode) > 255 then
 						unicodeEmotes[unicode] = emote
@@ -466,7 +470,7 @@ function CEL.GetEmotesSearch(name, customFilter)
 				weights = {}
 			end
 			emotes[0] = emotes[0] + 1
-			emotes[emotes[0]] = emote
+			emotes[emotes[0]] = emote ---@diagnostic disable-line: assign-type-mismatch
 			weights[emote] = result
 		end
 	end
@@ -483,7 +487,7 @@ function CEL.GetEmoteSearch(name, customFilter)
 	if not emotes then
 		return
 	end
-	if emotes[2] and not cached then
+	if emotes[2] and weights and not cached then
 		CEL.SortEmotes(emotes, weights)
 	end
 	return emotes[1]
@@ -602,7 +606,7 @@ local function ReplaceEmotesInText(text, height, links, maxReplacements)
 						replacedEmotes = { [0] = 0 }
 					end
 					replacedEmotes[0] = replacedEmotes[0] + 1
-					replacedEmotes[replacedEmotes[0]] = emote
+					replacedEmotes[replacedEmotes[0]] = emote ---@diagnostic disable-line: assign-type-mismatch
 
 					replaced = replaced + 1
 					if maxReplacements and maxReplacements - replaced == 0 then
