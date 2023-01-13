@@ -21,6 +21,9 @@ local strlenutf8 = _G.strlenutf8
 ---@field public AUTOCOMPLETE_PRESET string
 ---@field public UNLOCK_BUTTON string
 ---@field public AUTOCOMPLETE_ACCEPT string
+---@field public EMOTE_ANIMATION string
+---@field public EMOTE_ANIMATION_IN_COMBAT string
+---@field public EMOTE_ANIMATION_INTERVAL string
 
 ---@class ChatEmotesNamespace
 ---@field public NewLocale function
@@ -52,6 +55,9 @@ local INVALID_AUTOCOMPLETE_CHARS = { [" "] = true, [":"] = true, ["|"] = true, [
 ---@field public autoCompleteChar string
 ---@field public autoCompletePreset number
 ---@field public unlockButton boolean
+---@field public emoteAnimation boolean
+---@field public emoteAnimationInCombat boolean
+---@field public emoteAnimationInterval number
 
 ---@class ChatEmotesDB_Position
 ---@field public point string
@@ -78,6 +84,9 @@ local defaults = {
 		autoCompleteChar = "#",
 		autoCompletePreset = 2,
 		unlockButton = false,
+		emoteAnimation = false,
+		emoteAnimationInCombat = false,
+		emoteAnimationInterval = 0.125,
 	},
 	position = {
 		point = "LEFT",
@@ -131,7 +140,7 @@ local ignoreChannels = {
 ---@class ChatFrameLineMessageInfo
 ---@field public message string
 
----@class ChatFrameLine
+---@class ChatFrameLine : FontString
 ---@field public messageInfo ChatFrameLineMessageInfo
 
 ---@class ChatFrame : ScrollingMessageFrame
@@ -2140,6 +2149,45 @@ do
 					addonButton:UpdatePosition(true)
 				end
 
+			end
+			do -- emoteAnimation
+
+				local emoteAnimation = InputFactory:CreateCheckBox(frame.ScrollFrame.ScrollChildFrame, { key = "emoteAnimation" }, L.EMOTE_ANIMATION) ---@class ConfigEditBoxEmoteAnimationButtonWidget : UICheckButtonTemplate
+
+			end
+			do -- emoteAnimationInCombat
+
+				local emoteAnimationInCombat = InputFactory:CreateCheckBox(frame.ScrollFrame.ScrollChildFrame, { key = "emoteAnimationInCombat", requires = "emoteAnimation" }, L.EMOTE_ANIMATION_IN_COMBAT) ---@class ConfigEditBoxEmoteAnimationInCombatButtonWidget : UICheckButtonTemplate
+
+			end
+			do -- emoteAnimationInterval
+
+				local emoteAnimationInterval = InputFactory:CreateEditBoxNumeric(frame.ScrollFrame.ScrollChildFrame, { type = "number", key = "emoteAnimationInterval", requires = "emoteAnimation" }, L.EMOTE_ANIMATION_INTERVAL) ---@class ConfigEditBoxEmoteAnimationIntervalWidget : ConfigWidget, EditBox
+
+				emoteAnimationInterval:SetPoint("TOPLEFT", frame.Options[#frame.Options - 1], "BOTTOMLEFT", 10, 0)
+
+				function emoteAnimationInterval:OnShow()
+					local cvar = self.cvar
+					local key = cvar.key
+					local options = DB.options
+					self.value = options[key]
+					self:SetMaxLetters(4)
+					self:SetNumber(self.value * 1000)
+				end
+
+				function emoteAnimationInterval:OnSave()
+					local cvar = self.cvar
+					local key = cvar.key
+					local options = DB.options
+					local value = self.value
+					if not value or value < 1 then
+						value = defaults.options[key] * 1000
+					elseif value > 9999 then
+						value = 9999
+					end
+					options[key] = value / 1000
+					self:SetNumber(value)
+				end
 
 			end
 		end
@@ -2173,7 +2221,7 @@ do
 
 	---@class ChatEmotesAnimatorMixin : Frame
 
-	local ANIMATION_PATTERN = "(|T(^:-)_(%d+)_(%d+):(.-)|t)"
+	local ANIMATION_PATTERN = "(|T([^:]-)_(%d+)_(%d+):(.-)|t)"
 	local ANIMATION_FORMAT = "|T%s_%d_%d:%s|t"
 
 	---@param text string
@@ -2190,6 +2238,7 @@ do
 				else
 					current = current + 1
 				end
+				-- TODO: framerate (add as part of the filename like the current frame and total number of frames?)
 				replacements[emoteText] = format(ANIMATION_FORMAT, prefix, current, total, suffix)
 			end
 		end
@@ -2204,17 +2253,17 @@ do
 			return
 		end
 		for from, to in pairs(replacements) do
-			-- TODO: WIP
+			-- TODO: better performance string replacement (patterns are expensive, should at least cache and re-use when possible?)
 			local pattern = CEL.TextToPattern(from)
 			text = CEL.ReplaceText(text, pattern, to)
 		end
 		return text
 	end
 
-	---@param button Button
+	---@param fontString FontString
 	---@return boolean? success
-	local function AnimateButton(button)
-		local text = button:GetText() ---@type string?
+	local function AnimateFontString(fontString)
+		local text = fontString:GetText() ---@type string?
 		if not text then
 			return
 		end
@@ -2222,7 +2271,7 @@ do
 		if not newText then
 			return
 		end
-		button:SetText(newText)
+		fontString:SetText(newText)
 		return true
 	end
 
@@ -2233,7 +2282,7 @@ do
 		if not emote or not emote.animated then
 			return
 		end
-		return AnimateButton(button)
+		return AnimateFontString(button.Label)
 	end
 
 	---@param button AutoCompleteButton
@@ -2247,7 +2296,7 @@ do
 		if not emote or not emote.animated then
 			return
 		end
-		return AnimateButton(button)
+		return AnimateFontString(button.Text)
 	end
 
 	---@param line ChatFrameLine
@@ -2265,23 +2314,43 @@ do
 		if not newText then
 			return
 		end
-		messageInfo.message = newText -- TODO: WIP
+		if messageInfo.message == newText then
+			return
+		end
+		messageInfo.message = newText
+		line:SetText(newText)
 		return true
 	end
 
-	local elapsed = 0
+	local inCombat = InCombatLockdown()
 
-	---@param _ ChatEmotesAnimatorMixin
-	---@param e number
-	local function OnUpdate(_, e)
+	---@param self ChatEmotesAnimatorMixin
+	---@param event WowEvent
+	local function OnEvent(self, event)
+		if event == "PLAYER_REGEN_DISABLED" then
+			inCombat = true
+		elseif event == "PLAYER_REGEN_ENABLED" then
+			inCombat = false
+		end
+	end
 
-		elapsed = elapsed + e
+	local elapsedTime = 0
 
-		if elapsed < 1 then -- TODO: WIP
+	---@param self ChatEmotesAnimatorMixin
+	---@param elapsed number
+	local function OnUpdate(self, elapsed)
+
+		if (not DB.options.emoteAnimation) or (inCombat and not DB.options.emoteAnimationInCombat) then
 			return
 		end
 
-		elapsed = 0
+		elapsedTime = elapsedTime + elapsed
+
+		if elapsedTime < DB.options.emoteAnimationInterval then
+			return
+		end
+
+		elapsedTime = 0
 
 		if addonFrame and addonFrame:IsShown() and addonFrame:IsVisible() then
 			addonFrame.Log.Events.ScrollBox:ForEachFrame(AnimateFrameButton)
@@ -2310,6 +2379,9 @@ do
 	function CreateAnimator()
 		---@diagnostic disable-next-line: cast-local-type
 		addonAnimator = CreateFrame("Frame") ---@class ChatEmotesAnimatorMixin
+		addonAnimator:RegisterEvent("PLAYER_REGEN_DISABLED")
+		addonAnimator:RegisterEvent("PLAYER_REGEN_ENABLED")
+		addonAnimator:SetScript("OnEvent", OnEvent)
 		addonAnimator:SetScript("OnUpdate", OnUpdate)
 	end
 

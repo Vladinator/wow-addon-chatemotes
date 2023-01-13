@@ -17,5 +17,8 @@ L.AUTOCOMPLETE_CHAR = "AutoComplete Character"
 L.AUTOCOMPLETE_PRESET = "AutoComplete Size"
 L.UNLOCK_BUTTON = "Unlock Chat Emotes Button"
 L.AUTOCOMPLETE_ACCEPT = "Press |cff55FF55Space|r"
+L.EMOTE_ANIMATION = "Enable Animations"
+L.EMOTE_ANIMATION_IN_COMBAT = "Enable Animations During Combat"
+L.EMOTE_ANIMATION_INTERVAL = "Animation Interval (ms)"
 
 ns.L = L
