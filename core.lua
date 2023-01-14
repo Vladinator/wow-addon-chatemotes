@@ -2278,6 +2278,9 @@ do
 	---@param fontString FontString
 	---@return boolean? success
 	local function AnimateFontString(fontString)
+		if not fontString:IsVisible() then
+			return
+		end
 		local text = fontString:GetText() ---@type string?
 		if not text then
 			return
@@ -2293,6 +2296,9 @@ do
 	---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
 	---@return boolean? success
 	local function AnimateFrameButton(button)
+		if not button:IsVisible() then
+			return
+		end
 		local emote = button.emote
 		if not emote or not emote.animated then
 			return
@@ -2367,14 +2373,14 @@ do
 
 		elapsedTime = 0
 
-		if addonFrame and addonFrame:IsShown() and addonFrame:IsVisible() then
+		if addonFrame and addonFrame:IsVisible() then
 			addonFrame.Log.Events.ScrollBox:ForEachFrame(AnimateFrameButton)
 			addonFrame.Log.Search.ScrollBox:ForEachFrame(AnimateFrameButton)
 		end
 
-		if AutoComplete and AutoComplete:IsShown() and AutoComplete:IsVisible() then
+		if AutoComplete and AutoComplete:IsVisible() then
 			for _, button in ipairs(AutoComplete.Buttons) do
-				if button and button:IsShown() and button:IsVisible() then
+				if button:IsVisible() then
 					AnimateAutoCompleteButton(button)
 				end
 			end
@@ -2382,9 +2388,11 @@ do
 
 		for i = 1, NUM_CHAT_WINDOWS do
 			local chatFrame = _G[format("ChatFrame%d", i)] ---@type ChatFrame?
-			if chatFrame and chatFrame:IsShown() and chatFrame:IsVisible() then
+			if chatFrame and chatFrame:IsVisible() then
 				for _, visibleLine in ipairs(chatFrame.visibleLines) do
-					AnimateChatLine(visibleLine)
+					if visibleLine:IsVisible() then
+						AnimateChatLine(visibleLine)
+					end
 				end
 			end
 		end
