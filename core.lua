@@ -2224,6 +2224,12 @@ do
 	local ANIMATION_PATTERN = "(|T([^:]-)_(%d+)_(%d+):(.-)|t)"
 	local ANIMATION_FORMAT = "|T%s_%d_%d:%s|t"
 
+	---@type table<string, string?>
+	local cachedFrames = {}
+
+	---@type table<string, string?>
+	local cachedPatterns = {}
+
 	---@param text string
 	---@return table<string, string>? replacements
 	local function ReplaceAnimationEmotes(text)
@@ -2233,13 +2239,18 @@ do
 				replacements = {}
 			end
 			if not replacements[emoteText] then
-				if current >= total then
-					current = 1
-				else
-					current = current + 1
+				local cache = cachedFrames[emoteText]
+				if not cache then
+					-- TODO: framerate (add as part of the filename like the current frame and total number of frames?)
+					if current >= total then
+						current = 1
+					else
+						current = current + 1
+					end
+					cache = format(ANIMATION_FORMAT, prefix, current, total, suffix)
+					cachedFrames[emoteText] = cache
 				end
-				-- TODO: framerate (add as part of the filename like the current frame and total number of frames?)
-				replacements[emoteText] = format(ANIMATION_FORMAT, prefix, current, total, suffix)
+				replacements[emoteText] = cache
 			end
 		end
 		return replacements
@@ -2254,8 +2265,12 @@ do
 		end
 		for from, to in pairs(replacements) do
 			-- TODO: better performance string replacement (patterns are expensive, should at least cache and re-use when possible?)
-			local pattern = CEL.TextToPattern(from)
-			text = CEL.ReplaceText(text, pattern, to)
+			local cache = cachedPatterns[from]
+			if not cache then
+				cache = CEL.TextToPattern(from)
+				cachedPatterns[from] = cache
+			end
+			text = CEL.ReplaceText(text, cache, to)
 		end
 		return text
 	end
