@@ -1,5 +1,3 @@
-if WOW_PROJECT_ID ~= WOW_PROJECT_MAINLINE then return end
-
 local CEL = LibStub and LibStub("ChatEmotesLib-1.0", true) ---@type ChatEmotesLib-1.0
 if not CEL then return end
 
@@ -99,7 +97,7 @@ local defaults = {
 	},
 	buttonPosition = {
 		point = "TOP",
-		relativeTo = "ChatFrameMenuButton", -- ChatFrame1ButtonFrame
+		relativeTo = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE and "ChatFrameMenuButton" or "ChatFrame1ButtonFrameDownButton", -- ChatFrame1ButtonFrame
 		relativePoint = "BOTTOM",
 		x = 0,
 		y = 0,
@@ -1126,7 +1124,7 @@ do
 
 	---@class ChatEmotesUIMixin : Frame
 	---@field public Inset Frame
-	---@field public NineSlice Frame
+	---@field public NineSlice? Frame
 
 	---@class ChatEmotesUIMixin
 	local UIMixin = {}
@@ -1139,7 +1137,9 @@ do
 		self:SetClampedToScreen(true)
 		self:SetSize(DefaultPanelWidth, DefaultPanelHeight)
 		ButtonFrameTemplate_HidePortrait(self) ---@diagnostic disable-line: undefined-global
-		self.NineSlice:SetPoint("TOPLEFT", -1, 0)
+		if self.NineSlice then
+			self.NineSlice:SetPoint("TOPLEFT", -1, 0)
+		end
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self.ResizeButton:Init(self, MinPanelWidth, MinPanelHeight, MaxPanelWidth, MaxPanelHeight) ---@diagnostic disable-line: undefined-field
@@ -1656,7 +1656,7 @@ do
 
 	---@class ChatEmotesUIConfigMixin : Frame
 	---@field public Inset Frame
-	---@field public NineSlice Frame
+	---@field public NineSlice? Frame
 	---@field public Options ConfigWidget[]
 	---@field public ScrollFrame FauxScrollFrameTemplate
 
@@ -1671,7 +1671,9 @@ do
 		self:SetSize(DefaultPanelWidth, DefaultPanelHeight)
 		self:SetPoint("CENTER")
 		ButtonFrameTemplate_HidePortrait(self) ---@diagnostic disable-line: undefined-global
-		self.NineSlice:SetPoint("TOPLEFT", -1, 0)
+		if self.NineSlice then
+			self.NineSlice:SetPoint("TOPLEFT", -1, 0)
+		end
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
 		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
 		self:SetTitle(L.CHAT_EMOTES_OPTIONS) ---@diagnostic disable-line: undefined-field
