@@ -1071,14 +1071,27 @@ do
 		self.Star:SetPoint("TOPRIGHT", -0.5, -1)
 		self.Star:Hide()
 		self.FlashOverlay = self:CreateAnimationGroup() ---@class ChatEmotesUIScrollBoxEmoteButtonMixinFlashOverlay : AnimationGroup
+		self.FlashOverlay.duration = 1.5
+		self.FlashOverlay.scale = 1.1
+		self.FlashOverlay.alphaFrom = 1
+		self.FlashOverlay.alphaTo = 0.8
 		self.FlashOverlay.Background = self:CreateTexture(nil, "ARTWORK", nil, 3)
 		self.FlashOverlay.Background:SetAllPoints()
 		self.FlashOverlay.Background:SetColorTexture(0.25, 0.25, 0.25, 1)
 		self.FlashOverlay.Background:Hide()
-		self.FlashOverlay.duration = 1.5
-		self.FlashOverlay.scale = 1.1
-		self.FlashOverlay.alphaFrom = 1
-		self.FlashOverlay.alphaTo = 0.5
+		self.FlashOverlay.BackgroundFadeIn = self.FlashOverlay:CreateAnimation("Alpha")
+		self.FlashOverlay.BackgroundFadeIn:SetOrder(1)
+		self.FlashOverlay.BackgroundFadeIn:SetTarget(self.FlashOverlay.Background)
+		self.FlashOverlay.BackgroundFadeIn:SetDuration(self.FlashOverlay.duration*0.2)
+		self.FlashOverlay.BackgroundFadeIn:SetFromAlpha(0)
+		self.FlashOverlay.BackgroundFadeIn:SetToAlpha(1)
+		self.FlashOverlay.BackgroundFadeOut = self.FlashOverlay:CreateAnimation("Alpha")
+		self.FlashOverlay.BackgroundFadeOut:SetOrder(3)
+		self.FlashOverlay.BackgroundFadeOut:SetTarget(self.FlashOverlay.Background)
+		self.FlashOverlay.BackgroundFadeOut:SetDuration(self.FlashOverlay.duration*0.2)
+		self.FlashOverlay.BackgroundFadeOut:SetFromAlpha(1)
+		self.FlashOverlay.BackgroundFadeOut:SetToAlpha(0)
+		self.FlashOverlay.BackgroundFadeOut:SetSmoothing("OUT")
 		self.FlashOverlay.Rotate = self.FlashOverlay:CreateAnimation("Rotation")
 		self.FlashOverlay.Rotate:SetOrder(1)
 		self.FlashOverlay.Rotate:SetDuration(self.FlashOverlay.duration/2)
