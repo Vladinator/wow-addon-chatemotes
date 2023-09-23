@@ -32,12 +32,13 @@ local addonName = ... ---@type string @The name of the addon.
 local ns = select(2, ...) ---@type ChatEmotesNamespace @The addon namespace.
 local L = ns.L
 
-local addon = CreateFrame("Frame")
+local addon = CreateFrame("Frame") ---@class ChatEmotesAddon : Frame
 local addonFrame ---@type ChatEmotesUIMixin
 local addonButton ---@type ChatEmotesUIButtonMixin
 local addonConfigFrame ---@type ChatEmotesUIConfigMixin
 local addonAnimator ---@type ChatEmotesAnimatorMixin
 
+local IS_MAINLINE = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
 local NO_EMOTE_MARKUP_FALLBACK = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", 132048, 16, 10, -1, 0, 16, 16, 4, 13, 0, 16)
 local MAX_EMOTES_PER_MESSAGE = 59 -- 60 and above will result in malformed trailing emotes in the chat frame
 local INVALID_AUTOCOMPLETE_CHARS = { [" "] = true, [":"] = true, ["|"] = true, ["/"] = true, ["-"] = true }
@@ -97,7 +98,7 @@ local defaults = {
 	},
 	buttonPosition = {
 		point = "TOP",
-		relativeTo = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE and "ChatFrameMenuButton" or "ChatFrame1ButtonFrameDownButton", -- ChatFrame1ButtonFrame
+		relativeTo = IS_MAINLINE and "ChatFrameMenuButton" or "ChatFrame1ButtonFrame",
 		relativePoint = "BOTTOM",
 		x = 0,
 		y = 0,
@@ -218,6 +219,7 @@ local function ToggleFavorite(emote, noUpdates)
 	else
 		AddToFavorites(emote, noUpdates)
 	end
+	addonFrame.isSortDirty = true
 end
 
 ---@param emote ChatEmotesLib-1.0_Emote
@@ -351,7 +353,7 @@ local function AutoCompleteFontObjectPresetFallback(fontObjectPreset)
 	return AutoCompleteFontPresetFallback
 end
 
----@type AutoCompleteFrame
+---@class AutoCompleteFrame
 local AutoComplete do
 
 	local AUTOCOMPLETE_MAX_BUTTONS = AUTOCOMPLETE_MAX_BUTTONS ---@diagnostic disable-line: undefined-global
@@ -387,8 +389,9 @@ local AutoComplete do
 	---@field public emote ChatEmotesLib-1.0_Emote
 	---@field public from number
 	---@field public to number
+	---@field public favorite? boolean
 
-	AutoComplete = CreateFrame("Frame", "VladsChatEmotesAutoCompleteFrame", UIParent, "TooltipBackdropTemplate") ---@diagnostic disable-line: cast-local-type
+	AutoComplete = CreateFrame("Frame", "VladsChatEmotesAutoCompleteFrame", UIParent, "TooltipBackdropTemplate") ---@class AutoCompleteFrame
 
 	---@param text string
 	---@param pos number
@@ -457,16 +460,19 @@ local AutoComplete do
 		end
 		local index = 0
 		for i = 1, emotes[0] do
-			local emote = emotes[i]
+			---@diagnostic disable-next-line: assign-type-mismatch
+			local emote = emotes[i] ---@type ChatEmotesLib-1.0_Emote
 			if not emote.ignoreSuggestion then
-				local priority = emote.name:find(query) or (100 + (emote.name:lower():find(query:lower()) or 99))
+				local isFavorite = IsFavorite(emote)
+				local priority = (isFavorite and 0 or 1000) + (emote.name:find(query) or (100 + (emote.name:lower():find(query:lower()) or 99)))
 				index = index + 1
-				results[index] = {
+				results[index] = { ---@type AutoCompleteResult
 					priority = priority,
 					name = emote.name,
-					emote = emote, ---@diagnostic disable-line: assign-type-mismatch
+					emote = emote,
 					from = sfrom,
 					to = sto,
+					favorite = isFavorite,
 				}
 			end
 		end
@@ -621,7 +627,7 @@ local AutoComplete do
 			local emote = result.emote
 			local button = self.Buttons[i]
 			button.result = result
-			button:SetFormattedText("%s %s", emote.markup, emote.name) ---@diagnostic disable-line: redundant-parameter
+			button:SetFormattedText("|cff%s%s %s|r", result.favorite and "FFFF00" or "FFFFFF", emote.markup, emote.name) ---@diagnostic disable-line: redundant-parameter
 			maxWidth = max(maxWidth, button.Text:GetStringWidth() + BUTTON_PADDING_X)
 			button:Show()
 		end
@@ -932,55 +938,58 @@ do
 	---@class CallbackRegistryMixin : Frame
 	---@field public GenerateCallbackEvents function
 	---@field public TriggerEvent function
+	---@field public RegisterCallback fun(self: CallbackRegistryMixin, event: any, callback: fun(...: any), context: any)
 
 	---@class ScrollBoxListViewMixin : CallbackRegistryMixin
-	---@field public FindFrame function(elementData)
-	---@field public HasScrollableExtent function
-	---@field public ScrollToEnd function(noInterpolation)
-	---@field public GetScrollPercentage function
-	---@field public GetVisibleExtentPercentage function
-	---@field public IsScrollAllowed function
-	---@field public GetView function
-	---@field public Init function(view)
-	---@field public SetView function(view)
-	---@field public Flush function
-	---@field public ForEachFrame function(func)
-	---@field public EnumerateFrames function
-	---@field public FindElementDataByPredicate function(predicate)
-	---@field public FindElementDataIndexByPredicate function(predicate)
-	---@field public FindByPredicate function(predicate)
-	---@field public Find function(index)
-	---@field public FindIndex function(elementData)
-	---@field public InsertElementData function(...)
-	---@field public InsertElementDataTable function(tbl)
-	---@field public InsertElementDataTableRange function(tbl, indexBegin, indexEnd)
-	---@field public ContainsElementDataByPredicate function(predicate)
-	---@field public GetDataProvider function
-	---@field public HasDataProvider function
-	---@field public ClearDataProvider function
-	---@field public GetDataIndexBegin function
-	---@field public GetDataIndexEnd function
-	---@field public IsVirtualized function
-	---@field public GetElementExtent function(dataIndex)
-	---@field public GetExtentUntil function(dataIndex)
-	---@field public SetDataProvider function(dataProvider, retainScrollPosition)
-	---@field public GetDataProviderSize function
-	---@field public OnViewDataChanged function
-	---@field public Rebuild function
-	---@field public OnViewAcquiredFrame function(frame, elementData, new)
-	---@field public OnViewReleasedFrame function(frame, oldElementData)
-	---@field public IsAcquireLocked function
-	---@field public FullUpdateInternal function
-	---@field public Update function(forceLayout)
-	---@field public ScrollToNearest function(dataIndex, noInterpolation)
-	---@field public ScrollToElementDataIndex function(dataIndex, alignment, noInterpolation)
-	---@field public ScrollToElementData function(elementData, alignment, noInterpolation)
-	---@field public ScrollToElementDataByPredicate function(predicate, alignment, noInterpolation)
+	---@field public FindFrame fun(self: ScrollBoxListViewMixin, elementData: ChatEmotesUIScrollBoxEmoteButtonMixin): ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public HasScrollableExtent fun(self: ScrollBoxListViewMixin)
+	---@field public ScrollToEnd fun(self: ScrollBoxListViewMixin, noInterpolation: any)
+	---@field public GetScrollPercentage fun(self: ScrollBoxListViewMixin)
+	---@field public GetVisibleExtentPercentage fun(self: ScrollBoxListViewMixin)
+	---@field public IsScrollAllowed fun(self: ScrollBoxListViewMixin)
+	---@field public GetView fun(self: ScrollBoxListViewMixin): ScrollBoxListViewMixin
+	---@field public Init fun(self: ScrollBoxListViewMixin, view: ScrollBoxListViewMixin)
+	---@field public SetView fun(self: ScrollBoxListViewMixin, view: ScrollBoxListViewMixin)
+	---@field public Flush fun(self: ScrollBoxListViewMixin)
+	---@field public ForEachFrame fun(self: ScrollBoxListViewMixin, callback: fun(button: ChatEmotesUIScrollBoxEmoteButtonMixin))
+	---@field public EnumerateFrames fun(self: ScrollBoxListViewMixin): fun(): (fun(): number, ChatEmotesUIScrollBoxEmoteButtonMixin)
+	---@field public FindElementDataByPredicate fun(self: ScrollBoxListViewMixin, predicate: fun(): boolean?): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public FindElementDataIndexByPredicate fun(self: ScrollBoxListViewMixin, predicate: fun(): boolean?): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public FindByPredicate fun(self: ScrollBoxListViewMixin, predicate: fun(): boolean?): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public Find fun(self: ScrollBoxListViewMixin, index: number): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public FindIndex fun(self: ScrollBoxListViewMixin, elementData: ChatEmotesUIScrollBoxEmoteButtonMixin): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public InsertElementData fun(self: ScrollBoxListViewMixin, ...: any)
+	---@field public InsertElementDataTable fun(self: ScrollBoxListViewMixin, tbl: any[])
+	---@field public InsertElementDataTableRange fun(self: ScrollBoxListViewMixin, tbl: any[], indexBegin: number, indexEnd: number)
+	---@field public ContainsElementDataByPredicate fun(self: ScrollBoxListViewMixin, predicate: fun(elementData: ChatEmotesUIScrollBoxEmoteButtonMixin): boolean?)
+	---@field public GetDataProvider fun(self: ScrollBoxListViewMixin): ChatEmotesDataProvider
+	---@field public HasDataProvider fun(self: ScrollBoxListViewMixin): boolean
+	---@field public ClearDataProvider fun(self: ScrollBoxListViewMixin)
+	---@field public GetDataIndexBegin fun(self: ScrollBoxListViewMixin): number
+	---@field public GetDataIndexEnd fun(self: ScrollBoxListViewMixin): number
+	---@field public IsVirtualized fun(self: ScrollBoxListViewMixin): boolean
+	---@field public GetElementExtent fun(self: ScrollBoxListViewMixin, dataIndex: number)
+	---@field public GetExtentUntil fun(self: ScrollBoxListViewMixin, dataIndex: number)
+	---@field public SetDataProvider fun(self: ScrollBoxListViewMixin, dataProvider: ChatEmotesDataProvider, retainScrollPosition: boolean?)
+	---@field public GetDataProviderSize fun(self: ScrollBoxListViewMixin)
+	---@field public OnViewDataChanged fun(self: ScrollBoxListViewMixin)
+	---@field public Rebuild fun(self: ScrollBoxListViewMixin)
+	---@field public OnViewAcquiredFrame fun(self: ScrollBoxListViewMixin, frame: ChatEmotesUIScrollBoxEmoteButtonMixin, elementData: ChatEmotesLib-1.0_Emote, new: any)
+	---@field public OnViewReleasedFrame fun(self: ScrollBoxListViewMixin, frame: ChatEmotesUIScrollBoxEmoteButtonMixin, oldElementData: ChatEmotesLib-1.0_Emote)
+	---@field public IsAcquireLocked fun(self: ScrollBoxListViewMixin)
+	---@field public FullUpdateInternal fun(self: ScrollBoxListViewMixin)
+	---@field public Update fun(self: ScrollBoxListViewMixin, forceLayout: boolean?)
+	---@field public ScrollToNearest fun(self: ScrollBoxListViewMixin, dataIndex: number, noInterpolation: any)
+	---@field public ScrollToElementDataIndex fun(self: ScrollBoxListViewMixin, dataIndex: number, alignment: any, noInterpolation: any)
+	---@field public ScrollToElementData fun(self: ScrollBoxListViewMixin, elementData: ChatEmotesLib-1.0_Emote, alignment: any, noInterpolation: any): ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public ScrollToElementDataByPredicate fun(self: ScrollBoxListViewMixin, predicate: (fun(elementData: ChatEmotesLib-1.0_Emote): boolean?), alignment: any, noInterpolation: any): ChatEmotesUIScrollBoxEmoteButtonMixin?
 
 	---@class WowScrollBoxList : ScrollBoxListViewMixin, Frame
+	---@field public Background Texture
 
 	---@class ChatEmotesUIScrollCollectionMixin : CallbackRegistryMixin
 
+	---@param scrollBox ScrollBoxListViewMixin
 	local function SetScrollBoxButtonAlternateState(scrollBox)
 		local index = scrollBox:GetDataIndexBegin()
 		scrollBox:ForEachFrame(function(button)
@@ -1017,6 +1026,7 @@ do
 	end
 
 	---@class ChatEmotesUIScrollBoxEmoteButtonMixin : Button
+	---@field public isInitialized? boolean
 
 	---@class ChatEmotesUIScrollBoxEmoteButtonMixin
 	local UIScrollBoxEmoteButtonMixin = {}
@@ -1036,7 +1046,7 @@ do
 		-- self.LeftLabel:SetHeight(ButtonSize)
 		-- self.LeftLabel:SetPoint("LEFT", 5, 0)
 		-- self.LeftLabel:SetPoint("RIGHT", self.RightLabel, "LEFT", -5, 0)
-		self.Label = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall", 1)
+		self.Label = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 		self.Label:SetJustifyH("CENTER")
 		self.Label:SetJustifyV("MIDDLE")
 		self.Label:SetAllPoints()
@@ -1052,12 +1062,57 @@ do
 		self.Alternate:SetAllPoints()
 		self.Alternate:SetColorTexture(0.2, 0.2, 0.2, 1)
 		self.Alternate:Hide()
-		-- self.Star = self:CreateTexture(nil, "OVERLAY", nil, 1)
+		self.Star = self:CreateTexture(nil, "OVERLAY", nil, 1)
 		-- self.Star:SetTexture(2923258)
 		-- self.Star:SetTexCoord(2/32, 16/32, 2/32, 16/32)
-		-- self.Star:SetSize(16, 16)
-		-- self.Star:SetPoint("TOPRIGHT", 1, 1)
-		-- self.Star:Hide()
+		self.Star:SetTexture(984826)
+		self.Star:SetTexCoord(99/512, 117/512, 10/512, 28/512)
+		self.Star:SetSize(10, 10)
+		self.Star:SetPoint("TOPRIGHT", -0.5, -1)
+		self.Star:Hide()
+		self.FlashOverlay = self:CreateAnimationGroup() ---@class ChatEmotesUIScrollBoxEmoteButtonMixinFlashOverlay : AnimationGroup
+		self.FlashOverlay.Background = self:CreateTexture(nil, "ARTWORK", nil, 3)
+		self.FlashOverlay.Background:SetAllPoints()
+		self.FlashOverlay.Background:SetColorTexture(0.25, 0.25, 0.25, 1)
+		self.FlashOverlay.Background:Hide()
+		self.FlashOverlay.duration = 1.5
+		self.FlashOverlay.scale = 1.1
+		self.FlashOverlay.alphaFrom = 1
+		self.FlashOverlay.alphaTo = 0.5
+		self.FlashOverlay.Rotate = self.FlashOverlay:CreateAnimation("Rotation")
+		self.FlashOverlay.Rotate:SetOrder(1)
+		self.FlashOverlay.Rotate:SetDuration(self.FlashOverlay.duration/2)
+		self.FlashOverlay.Rotate:SetDegrees(360)
+		self.FlashOverlay.Rotate:SetSmoothing("IN_OUT")
+		self.FlashOverlay.Scale1 = self.FlashOverlay:CreateAnimation("Scale")
+		self.FlashOverlay.Scale1:SetOrder(1)
+		self.FlashOverlay.Scale1:SetDuration(self.FlashOverlay.duration*0.4)
+		self.FlashOverlay.Scale1:SetScaleFrom(1, 1)
+		self.FlashOverlay.Scale1:SetScaleTo(self.FlashOverlay.scale, self.FlashOverlay.scale)
+		self.FlashOverlay.Scale2 = self.FlashOverlay:CreateAnimation("Scale")
+		self.FlashOverlay.Scale2:SetOrder(2)
+		self.FlashOverlay.Scale2:SetDuration(self.FlashOverlay.duration*0.4)
+		self.FlashOverlay.Scale2:SetScaleFrom(self.FlashOverlay.scale, self.FlashOverlay.scale)
+		self.FlashOverlay.Scale2:SetScaleTo(1, 1)
+		self.FlashOverlay.Scale2:SetSmoothing("OUT")
+		self.FlashOverlay.Alpha1 = self.FlashOverlay:CreateAnimation("Alpha")
+		self.FlashOverlay.Alpha1:SetOrder(1)
+		self.FlashOverlay.Alpha1:SetDuration(self.FlashOverlay.duration*0.4)
+		self.FlashOverlay.Alpha1:SetFromAlpha(self.FlashOverlay.alphaFrom)
+		self.FlashOverlay.Alpha1:SetToAlpha(self.FlashOverlay.alphaTo)
+		self.FlashOverlay.Alpha2 = self.FlashOverlay:CreateAnimation("Alpha")
+		self.FlashOverlay.Alpha2:SetOrder(2)
+		self.FlashOverlay.Alpha2:SetDuration(self.FlashOverlay.duration*0.4)
+		self.FlashOverlay.Alpha2:SetFromAlpha(self.FlashOverlay.alphaFrom)
+		self.FlashOverlay.Alpha2:SetToAlpha(self.FlashOverlay.alphaTo)
+		self.FlashOverlay.Alpha3 = self.FlashOverlay:CreateAnimation("Alpha")
+		self.FlashOverlay.Alpha3:SetOrder(3)
+		self.FlashOverlay.Alpha3:SetDuration(self.FlashOverlay.duration*0.2)
+		self.FlashOverlay.Alpha3:SetFromAlpha(self.FlashOverlay.alphaTo)
+		self.FlashOverlay.Alpha3:SetToAlpha(self.FlashOverlay.alphaFrom)
+		self.FlashOverlay:SetScript("OnPlay", function() self.FlashOverlay.Background:Show() end)
+		self.FlashOverlay:SetScript("OnStop", function() self.FlashOverlay.Background:Hide() end)
+		self.FlashOverlay:SetScript("OnFinished", function() self.FlashOverlay.Background:Hide() end)
 		self:SetScript("OnEnter", self.OnEnter)
 		self:SetScript("OnLeave", self.OnLeave)
 		self:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -1070,6 +1125,8 @@ do
 		-- self.RightLabel:SetText(emote.markup)
 		self.emote = emote
 		self.Label:SetText(emote.markup)
+		self.FlashOverlay:Stop()
+		self.FlashOverlay:Finish()
 		self:Update()
 	end
 
@@ -1103,14 +1160,20 @@ do
 	end
 
 	function UIScrollBoxEmoteButtonMixin:Update()
-		-- local emote = self.emote
-		-- if IsFavorite(emote) then
+		local emote = self.emote
+		local isFavorite = IsFavorite(emote)
+		self.Star:SetShown(isFavorite)
+		-- if isFavorite then
 		-- 	self.Background:SetColorTexture(0.2, 0.2, 0, 1)
 		-- 	self.MouseoverOverlay:SetColorTexture(0.6, 0.6, 0.4, 1)
 		-- else
 		-- 	self.Background:SetColorTexture(0.1, 0.1, 0.1, 1)
 		-- 	self.MouseoverOverlay:SetColorTexture(0.4, 0.4, 0.4, 1)
 		-- end
+	end
+
+	function UIScrollBoxEmoteButtonMixin:Flash()
+		self.FlashOverlay:Play()
 	end
 
 	local MinPanelWidth = 380
@@ -1122,9 +1185,74 @@ do
 	local isGridView = true
 	local SearchMaxResults = 200
 
+	---@alias ChatEmotesDataProviderEnumerator fun(): number, ChatEmotesLib-1.0_Emote
+
+	---@alias ChatEmotesDataProviderCallback fun(elementData: ChatEmotesLib-1.0_Emote)
+
+	---@alias ChatEmotesDataProviderPredicate fun(elementData: ChatEmotesLib-1.0_Emote): boolean?
+
+	---@class ChatEmotesDataProvider
+	---@field public collection ChatEmotesLib-1.0_Emote[]
+	---@field public RegisterCallback fun(self: ChatEmotesDataProvider, event: any, callback: fun(...: any), context: any)
+	---@field public Insert fun(self: ChatEmotesDataProvider, elementData: ChatEmotesLib-1.0_Emote)
+	---@field public InsertTableRange fun(self: ChatEmotesDataProvider, elements: ChatEmotesLib-1.0_Emote[], position: number, element: ChatEmotesLib-1.0_Emote)
+	---@field public Flush fun(self: ChatEmotesDataProvider)
+	---@field public GetCollection fun(self: ChatEmotesDataProvider): collection: ChatEmotesLib-1.0_Emote[]
+	---@field public GetSize fun(self: ChatEmotesDataProvider): size: number
+	---@field public IsEmpty fun(self: ChatEmotesDataProvider): isEmpty: boolean
+	---@field public Sort fun(self: ChatEmotesDataProvider)
+	---@field public HasSortComparator fun(self: ChatEmotesDataProvider): boolean
+	---@field public ClearSortComparator fun(self: ChatEmotesDataProvider)
+	---@field public SetSortComparator fun(self: ChatEmotesDataProvider, sortComparator: (fun(a: ChatEmotesLib-1.0_Emote, b: ChatEmotesLib-1.0_Emote): boolean?), skipSort?: boolean)
+	---@field public Enumerate fun(): enumerator: ChatEmotesDataProviderEnumerator
+	---@field public ReverseEnumerate fun(): enumerator: ChatEmotesDataProviderEnumerator
+	---@field public ForEach fun(self: ChatEmotesDataProvider, callback: ChatEmotesDataProviderCallback)
+	---@field public ReverseForEach fun(self: ChatEmotesDataProvider, callback: ChatEmotesDataProviderCallback)
+	---@field public Find fun(self: ChatEmotesDataProvider, index: number): elementData: ChatEmotesLib-1.0_Emote?
+	---@field public FindByPredicate fun(self: ChatEmotesDataProvider, predicate: ChatEmotesDataProviderPredicate): index: number?, elementData: ChatEmotesLib-1.0_Emote?
+	---@field public FindElementDataByPredicate fun(self: ChatEmotesDataProvider, predicate: ChatEmotesDataProviderPredicate): elementData: ChatEmotesLib-1.0_Emote?
+	---@field public FindIndex fun(self: ChatEmotesDataProvider, elementData: ChatEmotesLib-1.0_Emote): index: number?
+	---@field public FindIndexByPredicate fun(self: ChatEmotesDataProvider, predicate: ChatEmotesDataProviderPredicate): index: number?
+	---@field public ContainsByPredicate fun(self: ChatEmotesDataProvider, predicate: ChatEmotesDataProviderPredicate): contains: boolean
+
+	---@class ChatEmotesUIMixinTitleBar : Frame
+	---@field public Init fun(self: ChatEmotesUIMixinTitleBar, parent: ChatEmotesUIMixin)
+
+	---@class ChatEmotesUIMixinResizeButton : Button
+	---@field public Init fun(self: ChatEmotesUIMixinResizeButton, parent: ChatEmotesUIMixin, minWidth: number, minHeight: number, maxWidth: number, maxHeight: number)
+
+	---@class ChatEmotesUIMixinConfigButton : Button
+	---@field public Texture Texture
+
+	---@class ChatEmotesUIMixinLog : Frame
+
+	---@class ChatEmotesUIMixinLogBar : Frame
+
+	---@class ChatEmotesUIMixinLogBarSearchBox : EditBox
+
+	---@class ChatEmotesUIMixinScrollFrame : Frame
+	---@field public Background Texture
+	---@field public ScrollBox WowScrollBoxList
+	---@field public ScrollBar ChatEmotesUIScrollCollectionMixin
+
+	---@class ChatEmotesUIMixinLogEvents : ChatEmotesUIMixinScrollFrame
+
+	---@class ChatEmotesUIMixinLogSearch : ChatEmotesUIMixinScrollFrame
+
+	---@class ChatEmotesUIMixinMissingEmotePackage : Frame
+
 	---@class ChatEmotesUIMixin : Frame
+	---@field public isSortDirty? boolean
+	---@field public emotes ChatEmotesLib-1.0_Emote[]
+	---@field public emotesMap table<ChatEmotesLib-1.0_Emote, number>
+	---@field public showingArguments boolean
+	---@field public filterDataProvider ChatEmotesDataProvider
+	---@field public logDataProvider ChatEmotesDataProvider
+	---@field public searchDataProvider ChatEmotesDataProvider
+	---@field public pendingSearch? ChatEmotesLib-1.0_Emote
 	---@field public Inset Frame
 	---@field public NineSlice? Frame
+	---@field public SetTitle fun(self: ChatEmotesUIMixin, text: string)
 
 	---@class ChatEmotesUIMixin
 	local UIMixin = {}
@@ -1141,9 +1269,9 @@ do
 			self.NineSlice:SetPoint("TOPLEFT", -1, 0)
 		end
 		self.Inset:SetPoint("TOPLEFT", 4, -24) -- -60
-		self.TitleBar:Init(self) ---@diagnostic disable-line: undefined-field
-		self.ResizeButton:Init(self, MinPanelWidth, MinPanelHeight, MaxPanelWidth, MaxPanelHeight) ---@diagnostic disable-line: undefined-field
-		self:SetTitle(L.CHAT_EMOTES) ---@diagnostic disable-line: undefined-field
+		self.TitleBar:Init(self)
+		self.ResizeButton:Init(self, MinPanelWidth, MinPanelHeight, MaxPanelWidth, MaxPanelHeight)
+		self:SetTitle(L.CHAT_EMOTES)
 		self.showingArguments = false
 		self.filterDataProvider = CreateDataProvider()
 		self.logDataProvider = CreateDataProvider()
@@ -1180,6 +1308,26 @@ do
 		self:ClearAllPoints()
 		self:SetPoint(point, relativeTo, relativePoint, x, y) ---@diagnostic disable-line: param-type-mismatch
 		self.MissingEmotePackage:SetShown(self.logDataProvider:GetSize() == 0)
+		if not self.isSortDirty then
+			return
+		end
+		self.isSortDirty = false
+		---@param a ChatEmotesLib-1.0_Emote
+		---@param b ChatEmotesLib-1.0_Emote
+		local function SortFavoritesFirst(a, b)
+			local af = IsFavorite(a) and 1 or 0
+			local bf = IsFavorite(b) and 1 or 0
+			if af == bf then
+				local ai = self.emotesMap[a]
+				local bi = self.emotesMap[b]
+				return ai < bi
+			end
+			return af > bf
+		end
+		self.logDataProvider:SetSortComparator(SortFavoritesFirst)
+		self.logDataProvider:ClearSortComparator()
+		self.searchDataProvider:SetSortComparator(SortFavoritesFirst)
+		self.searchDataProvider:ClearSortComparator()
 	end
 
 	function UIMixin:OnHide()
@@ -1267,7 +1415,6 @@ do
 			local found = 0
 			---@diagnostic disable-next-line: undefined-field
 			text = text:trim() ---@type string
-			---@param elementData ChatEmotesLib-1.0_Emote
 			for index, elementData in self.logDataProvider:Enumerate() do
 				if self:TryAddToSearch(elementData, text) then
 					found = found + 1
@@ -1277,7 +1424,7 @@ do
 				end
 			end
 			-- self.Log.Search.ScrollBox:ScrollToElementDataIndex(1)
-			local pendingSearch = self.pendingSearch ---@type ChatEmotesLib-1.0_Emote
+			local pendingSearch = self.pendingSearch
 			if pendingSearch then
 				self.pendingSearch = nil
 				local found = self.Log.Search.ScrollBox:ScrollToElementDataByPredicate(
@@ -1297,6 +1444,7 @@ do
 				-- self.Log.Search.ScrollBox:ScrollToEnd(ScrollBoxConstants.NoScrollInterpolation)
 			end
 		end)
+		---@param scrollBox ScrollBoxListViewMixin
 		local function SetOnDataRangeChanged(scrollBox)
 			local function OnDataRangeChanged(sortPending)
 				SetScrollBoxButtonAlternateState(scrollBox)
@@ -1399,21 +1547,41 @@ do
 
 	---@param emotes ChatEmotesLib-1.0_Emote[]
 	function UIMixin:SetEmotes(emotes)
+		self.emotes = emotes
+		self.emotesMap = wipe(self.emotesMap or {})
 		self.logDataProvider:Flush()
 		if not emotes or not emotes[1] then
 			return
+		end
+		for index, emote in ipairs(emotes) do
+			self.emotesMap[emote] = index
 		end
 		self.logDataProvider:InsertTableRange(emotes, 1, emotes[0])
 	end
 
 	---@param emote ChatEmotesLib-1.0_Emote
 	function UIMixin:ShowEmote(emote)
-		self:Show() -- TODO: find emote and scroll to where it is located and highlight the frame
+		self:Show()
+		local found = self.Log.Events.ScrollBox:ScrollToElementDataByPredicate(
+			function(data) return data == emote end,
+			ScrollBoxConstants.AlignCenter,
+			ScrollBoxConstants.NoScrollInterpolation
+		)
+		if not found then
+			return
+		end
+		local button = self.Log.Events.ScrollBox:FindFrame(found)
+		if button then
+			button:Flash()
+		end
 	end
 
 	---@param emote ChatEmotesLib-1.0_Emote
 	function UIMixin:UpdateEmoteFrames(emote)
 		local scrollBox = self.Log.Events:IsShown() and self.Log.Events.ScrollBox or self.Log.Search.ScrollBox
+		local view = scrollBox:GetView()
+		local dataProvider = view:GetDataProvider()
+		dataProvider:Sort()
 		scrollBox:ForEachFrame(function(button)
 			if not emote or emote == button.emote then
 				button:Update()
@@ -1425,13 +1593,13 @@ do
 	function CreateUI(frameName)
 		local frame = CreateFrame("Frame", frameName, UIParent, "ButtonFrameTemplate") ---@class ChatEmotesUIMixin
 		Mixin(frame, UIMixin)
-		frame.TitleBar = CreateFrame("Frame", nil, frame, "PanelDragBarTemplate")
+		frame.TitleBar = CreateFrame("Frame", nil, frame, "PanelDragBarTemplate") ---@class ChatEmotesUIMixinTitleBar
 		frame.TitleBar:SetHeight(32)
 		frame.TitleBar:SetPoint("TOPLEFT")
 		frame.TitleBar:SetPoint("TOPRIGHT")
-		frame.ResizeButton = CreateFrame("Button", nil, frame, "PanelResizeButtonTemplate")
+		frame.ResizeButton = CreateFrame("Button", nil, frame, "PanelResizeButtonTemplate") ---@class ChatEmotesUIMixinResizeButton
 		frame.ResizeButton:SetPoint("BOTTOMRIGHT", -4, 4)
-		frame.ConfigButton = CreateFrame("Button", nil, frame)
+		frame.ConfigButton = CreateFrame("Button", nil, frame) ---@class ChatEmotesUIMixinConfigButton
 		frame.ConfigButton:SetSize(16, 16)
 		frame.ConfigButton:SetPoint("BOTTOMLEFT", 6, 6)
 		frame.ConfigButton.Texture = frame.ConfigButton:CreateTexture(nil, "ARTWORK")
@@ -1441,11 +1609,11 @@ do
 		frame.StatusText:SetJustifyH("LEFT")
 		frame.StatusText:SetHeight(18)
 		frame.StatusText:SetPoint("BOTTOMLEFT", frame.ConfigButton, "BOTTOMRIGHT", 2, 0)
-		frame.StatusText:SetPoint("BOTTOMRIGHT", frame.ResizeButton, "BOTTOMLEFT", -2, 0) ---@diagnostic disable-line: param-type-mismatch
-		frame.Log = CreateFrame("Frame", nil, frame)
-		frame.Log:SetPoint("TOPLEFT", frame.TitleBar, "BOTTOMLEFT", 8, 4) ---@diagnostic disable-line: param-type-mismatch
+		frame.StatusText:SetPoint("BOTTOMRIGHT", frame.ResizeButton, "BOTTOMLEFT", -2, 0)
+		frame.Log = CreateFrame("Frame", nil, frame) ---@class ChatEmotesUIMixinLog
+		frame.Log:SetPoint("TOPLEFT", frame.TitleBar, "BOTTOMLEFT", 8, 4)
 		frame.Log:SetPoint("BOTTOMRIGHT", -9, 28)
-		frame.Log.Bar = CreateFrame("Frame", nil,frame.Log)
+		frame.Log.Bar = CreateFrame("Frame", nil,frame.Log) ---@class ChatEmotesUIMixinLogBar
 		frame.Log.Bar:SetHeight(24)
 		frame.Log.Bar:SetPoint("TOPLEFT")
 		frame.Log.Bar:SetPoint("TOPRIGHT")
@@ -1453,14 +1621,14 @@ do
 		frame.Log.Bar.Label:SetJustifyH("RIGHT")
 		frame.Log.Bar.Label:SetSize(135, 10)
 		frame.Log.Bar.Label:SetPoint("RIGHT", -12*2, 0)
-		frame.Log.Bar.SearchBox = CreateFrame("EditBox", nil, frame.Log.Bar, "SearchBoxTemplate")
+		frame.Log.Bar.SearchBox = CreateFrame("EditBox", nil, frame.Log.Bar, "SearchBoxTemplate") ---@class ChatEmotesUIMixinLogBarSearchBox
 		frame.Log.Bar.SearchBox:SetAutoFocus(false)
 		frame.Log.Bar.SearchBox:SetHistoryLines(1)
 		frame.Log.Bar.SearchBox:SetMaxBytes(64)
 		frame.Log.Bar.SearchBox:SetSize(180, 22)
 		frame.Log.Bar.SearchBox:SetPoint("LEFT", 6, 0)
 		frame.Log.Bar.SearchBox:SetPoint("RIGHT", -2, 0)
-		frame.Log.Events = CreateFrame("Frame", nil, frame.Log)
+		frame.Log.Events = CreateFrame("Frame", nil, frame.Log) ---@class ChatEmotesUIMixinLogEvents
 		frame.Log.Events:SetPoint("TOPLEFT", frame.Log.Bar, "BOTTOMLEFT", 0, -2)
 		frame.Log.Events:SetPoint("BOTTOMRIGHT")
 		---@diagnostic disable-next-line: assign-type-mismatch
@@ -1476,7 +1644,7 @@ do
 		frame.Log.Events.ScrollBar:SetPoint("BOTTOMLEFT", frame.Log.Events.ScrollBox, "BOTTOMRIGHT", 0, 0)
 		Mixin(frame.Log.Events.ScrollBar, UIScrollCollectionMixin)
 		frame.Log.Events.ScrollBar:OnLoad()
-		frame.Log.Search = CreateFrame("Frame", nil, frame.Log)
+		frame.Log.Search = CreateFrame("Frame", nil, frame.Log) ---@class ChatEmotesUIMixinLogSearch
 		frame.Log.Search:SetPoint("TOPLEFT", frame.Log.Bar, "BOTTOMLEFT", 0, -2)
 		frame.Log.Search:SetPoint("BOTTOMRIGHT")
 		---@diagnostic disable-next-line: assign-type-mismatch
@@ -1492,7 +1660,7 @@ do
 		frame.Log.Search.ScrollBar:SetPoint("BOTTOMLEFT", frame.Log.Search.ScrollBox, "BOTTOMRIGHT", 0, 0)
 		Mixin(frame.Log.Search.ScrollBar, UIScrollCollectionMixin)
 		frame.Log.Search.ScrollBar:OnLoad()
-		frame.MissingEmotePackage = CreateFrame("Frame", nil, frame)
+		frame.MissingEmotePackage = CreateFrame("Frame", nil, frame) ---@class ChatEmotesUIMixinMissingEmotePackage
 		frame.MissingEmotePackage:SetFrameStrata("HIGH")
 		frame.MissingEmotePackage:SetAllPoints(frame.Log)
 		frame.MissingEmotePackage.Background = frame.MissingEmotePackage:CreateTexture(nil, "BACKGROUND")
@@ -1651,8 +1819,12 @@ do
 		return button
 	end
 
+	---@class FauxScrollFrameTemplateScrollChildFrame : Frame
+	---@field public Options ConfigWidget[]
+
 	---@class FauxScrollFrameTemplate : Frame
-	---@field public ScrollChildFrame Frame
+	---@field public ScrollBarMiddle Texture
+	---@field public ScrollChildFrame FauxScrollFrameTemplateScrollChildFrame
 
 	---@class ChatEmotesUIConfigMixin : Frame
 	---@field public Inset Frame
@@ -1987,7 +2159,7 @@ do
 		frame.TitleBar:SetPoint("TOPRIGHT")
 		do -- frame.Options
 			frame.Options = {}
-			frame.ScrollFrame = CreateFrame("ScrollFrame", "$parentScrollFrame", frame, "FauxScrollFrameTemplate") ---@diagnostic disable-line: assign-type-mismatch
+			frame.ScrollFrame = CreateFrame("ScrollFrame", "$parentScrollFrame", frame, "FauxScrollFrameTemplate")---@diagnostic disable-line: assign-type-mismatch
 			frame.ScrollFrame.ScrollBarMiddle = _G[format("%s%s", frame.ScrollFrame:GetName(), "Middle")] ---@type Texture
 			frame.ScrollFrame.ScrollChildFrame.Options = frame.Options ---@diagnostic disable-line: undefined-field -- alias
 			frame.ScrollFrame.ScrollBar.scrollStep = 32 ---@diagnostic disable-line: undefined-field

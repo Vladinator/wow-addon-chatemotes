@@ -311,7 +311,7 @@ local function SetSearchCache(customFilter, name, emotes, weights)
 	local nameCache = cache[name] ---@type ChatEmotesLib-1.0_SearchCache|boolean
 	if not nameCache then
 		if emotes then
-			nameCache = {}
+			nameCache = {} ---@diagnostic disable-line: missing-fields
 		else
 			nameCache = false
 		end
