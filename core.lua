@@ -1570,6 +1570,7 @@ do
 			self.emotesMap[emote] = index
 		end
 		self.logDataProvider:InsertTableRange(emotes, 1, emotes[0])
+		self.isSortDirty = next(DB.favorites) ~= nil
 	end
 
 	---@param emote ChatEmotesLib-1.0_Emote
@@ -2429,6 +2430,8 @@ do
 				local cache = cachedFrames[emoteText]
 				if not cache then
 					-- TODO: framerate (add as part of the filename like the current frame and total number of frames?)
+					current = 0 + current
+					total = 0 + total
 					if current >= total then
 						current = 1
 					else
