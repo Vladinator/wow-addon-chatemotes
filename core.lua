@@ -627,7 +627,7 @@ local AutoComplete do
 			local emote = result.emote
 			local button = self.Buttons[i]
 			button.result = result
-			button:SetFormattedText("|cff%s%s %s|r", result.favorite and "FFFF00" or "FFFFFF", emote.markup, emote.name) ---@diagnostic disable-line: redundant-parameter
+			button:SetFormattedText("%s |cff%s%s|r", emote.markup, result.favorite and "FFFF00" or "FFFFFF", emote.name) ---@diagnostic disable-line: redundant-parameter
 			maxWidth = max(maxWidth, button.Text:GetStringWidth() + BUTTON_PADDING_X)
 			button:Show()
 		end
@@ -952,7 +952,7 @@ do
 	---@field public SetView fun(self: ScrollBoxListViewMixin, view: ScrollBoxListViewMixin)
 	---@field public Flush fun(self: ScrollBoxListViewMixin)
 	---@field public ForEachFrame fun(self: ScrollBoxListViewMixin, callback: fun(button: ChatEmotesUIScrollBoxEmoteButtonMixin))
-	---@field public EnumerateFrames fun(self: ScrollBoxListViewMixin): fun(): (fun(): number, ChatEmotesUIScrollBoxEmoteButtonMixin)
+	---@field public EnumerateFrames fun(self: ScrollBoxListViewMixin): fun(): number, ChatEmotesUIScrollBoxEmoteButtonMixin
 	---@field public FindElementDataByPredicate fun(self: ScrollBoxListViewMixin, predicate: fun(): boolean?): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
 	---@field public FindElementDataIndexByPredicate fun(self: ScrollBoxListViewMixin, predicate: fun(): boolean?): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
 	---@field public FindByPredicate fun(self: ScrollBoxListViewMixin, predicate: fun(): boolean?): button: ChatEmotesUIScrollBoxEmoteButtonMixin?
@@ -2454,7 +2454,6 @@ do
 			return
 		end
 		for from, to in pairs(replacements) do
-			-- TODO: better performance string replacement (patterns are expensive, should at least cache and re-use when possible?)
 			local cache = cachedPatterns[from]
 			if not cache then
 				cache = CEL.TextToPattern(from)
@@ -2564,8 +2563,20 @@ do
 		elapsedTime = 0
 
 		if addonFrame and addonFrame:IsVisible() then
-			addonFrame.Log.Events.ScrollBox:ForEachFrame(AnimateFrameButton)
-			addonFrame.Log.Search.ScrollBox:ForEachFrame(AnimateFrameButton)
+			if addonFrame.Log.Events.ScrollBox:IsVisible() then
+				for _, button in addonFrame.Log.Events.ScrollBox:EnumerateFrames() do
+					if button:IsVisible() then
+						AnimateFrameButton(button)
+					end
+				end
+			end
+			if addonFrame.Log.Search.ScrollBox:IsVisible() then
+				for _, button in addonFrame.Log.Search.ScrollBox:EnumerateFrames() do
+					if button:IsVisible() then
+						AnimateFrameButton(button)
+					end
+				end
+			end
 		end
 
 		if AutoComplete and AutoComplete:IsVisible() then
