@@ -28,6 +28,7 @@ assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 ---@field public offsetB? number
 ---@field public unicode? string
 ---@field public animated? boolean
+---@field public duration? number|table<number, number>
 
 ---@class ChatEmotesLib-1.0_SearchCache @v1.0 of the emote structure.
 ---@field public emotes ChatEmotesLib-1.0_Emote[]
@@ -154,6 +155,18 @@ CEL.filter = {
 	nameFindTextStartsWithCaseless = function(emote, name)
 		local startIndex = CEL.filter.nameFindTextCaseless(emote, name)
 		return startIndex and (startIndex == 1 or startIndex == -1)
+	end,
+	---@param emote ChatEmotesLib-1.0_Emote
+	---@param file string
+	animatedFileFindText = function(emote, file)
+		if not emote.animated then
+			return
+		end
+		if emote.file == file then
+			return true
+		end
+		local startIndex = emote.file:find(file, nil, true)
+		return startIndex == 1
 	end,
 }
 
@@ -347,6 +360,7 @@ local function ProcessEmote(package, path, folder, file, index)
 	local offsetB
 	local unicode
 	local animated
+	local duration
 	if type(file) == "table" then
 		name = file.name
 		filePath = format("%s/%s/%s", path, folder, file.file or name)
@@ -364,6 +378,7 @@ local function ProcessEmote(package, path, folder, file, index)
 		args = file.args
 		unicode = file.unicode
 		animated = file.animated
+		duration = file.duration
 	else
 		name = file
 		filePath = format("%s/%s/%s", path, folder, file)
@@ -389,6 +404,7 @@ local function ProcessEmote(package, path, folder, file, index)
 		offsetB = offsetB,
 		unicode = unicode,
 		animated = animated,
+		duration = duration,
 	}, CEL.emoteMetatable)
 end
 
@@ -747,6 +763,11 @@ function CEL.GetEmoteFromLink(link)
 		return
 	end
 	return CEL.GetEmoteSearch(arg2, CEL.filter.sameName), arg2
+end
+
+---@param file string
+function CEL.GetAnimatedEmoteByFile(file)
+	return CEL.GetEmoteSearch(file, CEL.filter.animatedFileFindText), file
 end
 
 if OLDMINOR == 1 then

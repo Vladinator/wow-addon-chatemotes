@@ -83,9 +83,9 @@ local defaults = {
 		autoCompleteChar = "#",
 		autoCompletePreset = 2,
 		unlockButton = false,
-		emoteAnimation = false,
-		emoteAnimationInCombat = false,
-		emoteAnimationInterval = 0.125,
+		emoteAnimation = true,
+		emoteAnimationInCombat = true,
+		emoteAnimationInterval = 0.03,
 	},
 	position = {
 		point = "LEFT",
@@ -2421,6 +2421,9 @@ do
 	---@type table<string, string?>
 	local cachedPatterns = {}
 
+	---@type table<string, ChatEmotesLib-1.0_Emote?>
+	local cachedEmotes = {}
+
 	---@type table<string, number?>
 	local cachedTimers = {}
 
@@ -2429,31 +2432,50 @@ do
 	---@return table<string, string>? replacements
 	local function ReplaceAnimationEmotes(text, elapsed)
 		local replacements ---@type table<string, string>?
-		for emoteText, prefix, current, total, fps, suffix in text:gmatch(ANIMATION_PATTERN) do
+		for emoteText, prefix, current, total, duration, suffix in text:gmatch(ANIMATION_PATTERN) do
 			if not replacements or not replacements[emoteText] then
-				local cache = cachedFrames[emoteText]
-				if not cache then
-					current = 0 + current
-					total = 0 + total
-					if current >= total then
-						current = 1
-					else
-						current = current + 1
-					end
-					cache = format(ANIMATION_FORMAT, prefix, current, total, fps, suffix)
-					cachedFrames[emoteText] = cache
-				end
+				current = 0 + current ---@type number
+				total = 0 + total ---@type number
+				duration = 0 + duration ---@type number
+				local durationMS = duration/100
+				local nextDuration = duration
 				local timer = cachedTimers[prefix]
 				timer = (timer or 0) + elapsed
-				cachedTimers[prefix] = timer
-				fps = DB.options.emoteAnimationInterval/fps
-				if timer >= fps then
-					cachedTimers[prefix] = 0
-					if not replacements then
-						replacements = {}
-					end
-					replacements[emoteText] = cache
+				local cachedEmote = cachedEmotes[prefix]
+				if not cachedEmote then
+					cachedEmote = CEL.GetAnimatedEmoteByFile(prefix)
+					cachedEmotes[prefix] = cachedEmote
 				end
+				if cachedEmote.duration then
+					if type(cachedEmote.duration) == "table" then
+						for durationIndex, durationValue in pairs(cachedEmote.duration) do ---@diagnostic disable-line: param-type-mismatch
+							if current >= durationIndex then
+								nextDuration = durationValue
+							end
+						end
+					elseif type(cachedEmote.duration) == "number" then
+						---@diagnostic disable-next-line: assign-type-mismatch
+						nextDuration = cachedEmote.duration ---@type number
+					end
+				end
+				while timer >= durationMS do
+					timer = timer - durationMS
+					current = current + 1
+					if current > total then
+						current = 1
+					end
+				end
+				cachedTimers[prefix] = timer
+				local frameKey = format("%s:%s", prefix, current)
+				local cache = cachedFrames[frameKey]
+				if not cache then
+					cache = format(ANIMATION_FORMAT, prefix, current, total, nextDuration, suffix)
+					cachedFrames[frameKey] = cache
+				end
+				if not replacements then
+					replacements = {}
+				end
+				replacements[emoteText] = cache
 			end
 		end
 		return replacements
