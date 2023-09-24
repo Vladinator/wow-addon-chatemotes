@@ -880,6 +880,9 @@ local function ChatFrameOnHyperlinkEnter(self, link, text)
 	if not emote then
 		return
 	end
+	if emote.animated then
+		return -- TODO: NYI
+	end	
 	GameTooltip:SetOwner(self, "ANCHOR_CURSOR", 0, 0)
 	GameTooltip:AddLine(tostring(emote.name), 1, 1, 1)
 	GameTooltip:AddLine(emote.markup:gsub(":0:0", format(":%d:%d", 32, 32 * (emote.ratio or 1)), 1), 1, 1, 1)
@@ -2409,8 +2412,8 @@ do
 
 	---@class ChatEmotesAnimatorMixin : Frame
 
-	local ANIMATION_PATTERN = "(|T([^:]-)_(%d+)_(%d+):(.-)|t)"
-	local ANIMATION_FORMAT = "|T%s_%d_%d:%s|t"
+	local ANIMATION_PATTERN = "(|T([^:]-)_(%d+)_(%d+)_(%d+):(.-)|t)"
+	local ANIMATION_FORMAT = "|T%s_%d_%d_%d:%s|t"
 
 	---@type table<string, string?>
 	local cachedFrames = {}
@@ -2418,18 +2421,18 @@ do
 	---@type table<string, string?>
 	local cachedPatterns = {}
 
+	---@type table<string, number?>
+	local cachedTimers = {}
+
 	---@param text string
+	---@param elapsed number
 	---@return table<string, string>? replacements
-	local function ReplaceAnimationEmotes(text)
+	local function ReplaceAnimationEmotes(text, elapsed)
 		local replacements ---@type table<string, string>?
-		for emoteText, prefix, current, total, suffix in text:gmatch(ANIMATION_PATTERN) do
-			if not replacements then
-				replacements = {}
-			end
-			if not replacements[emoteText] then
+		for emoteText, prefix, current, total, fps, suffix in text:gmatch(ANIMATION_PATTERN) do
+			if not replacements or not replacements[emoteText] then
 				local cache = cachedFrames[emoteText]
 				if not cache then
-					-- TODO: framerate (add as part of the filename like the current frame and total number of frames?)
 					current = 0 + current
 					total = 0 + total
 					if current >= total then
@@ -2437,19 +2440,30 @@ do
 					else
 						current = current + 1
 					end
-					cache = format(ANIMATION_FORMAT, prefix, current, total, suffix)
+					cache = format(ANIMATION_FORMAT, prefix, current, total, fps, suffix)
 					cachedFrames[emoteText] = cache
 				end
-				replacements[emoteText] = cache
+				local timer = cachedTimers[prefix]
+				timer = (timer or 0) + elapsed
+				cachedTimers[prefix] = timer
+				fps = DB.options.emoteAnimationInterval/fps
+				if timer >= fps then
+					cachedTimers[prefix] = 0
+					if not replacements then
+						replacements = {}
+					end
+					replacements[emoteText] = cache
+				end
 			end
 		end
 		return replacements
 	end
 
 	---@param text string
+	---@param elapsed number
 	---@return string? newText
-	local function GetNextAnimationFrame(text)
-		local replacements = ReplaceAnimationEmotes(text)
+	local function GetNextAnimationFrame(text, elapsed)
+		local replacements = ReplaceAnimationEmotes(text, elapsed)
 		if not replacements then
 			return
 		end
@@ -2465,8 +2479,9 @@ do
 	end
 
 	---@param fontString FontString
+	---@param elapsed number
 	---@return boolean? success
-	local function AnimateFontString(fontString)
+	local function AnimateFontString(fontString, elapsed)
 		if not fontString:IsVisible() then
 			return
 		end
@@ -2474,7 +2489,7 @@ do
 		if not text then
 			return
 		end
-		local newText = GetNextAnimationFrame(text)
+		local newText = GetNextAnimationFrame(text, elapsed)
 		if not newText then
 			return
 		end
@@ -2483,8 +2498,9 @@ do
 	end
 
 	---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
+	---@param elapsed number
 	---@return boolean? success
-	local function AnimateFrameButton(button)
+	local function AnimateFrameButton(button, elapsed)
 		if not button:IsVisible() then
 			return
 		end
@@ -2492,12 +2508,13 @@ do
 		if not emote or not emote.animated then
 			return
 		end
-		return AnimateFontString(button.Label)
+		return AnimateFontString(button.Label, elapsed)
 	end
 
 	---@param button AutoCompleteButton
+	---@param elapsed number
 	---@return boolean? success
-	local function AnimateAutoCompleteButton(button)
+	local function AnimateAutoCompleteButton(button, elapsed)
 		local result = button.result
 		if not result then
 			return
@@ -2506,12 +2523,13 @@ do
 		if not emote or not emote.animated then
 			return
 		end
-		return AnimateFontString(button.Text)
+		return AnimateFontString(button.Text, elapsed)
 	end
 
 	---@param line ChatFrameLine
+	---@param elapsed number
 	---@return boolean? success
-	local function AnimateChatLine(line)
+	local function AnimateChatLine(line, elapsed)
 		local messageInfo = line.messageInfo
 		if not messageInfo then
 			return
@@ -2520,7 +2538,7 @@ do
 		if not text then
 			return
 		end
-		local newText = GetNextAnimationFrame(text)
+		local newText = GetNextAnimationFrame(text, elapsed)
 		if not newText then
 			return
 		end
@@ -2560,20 +2578,18 @@ do
 			return
 		end
 
-		elapsedTime = 0
-
 		if addonFrame and addonFrame:IsVisible() then
 			if addonFrame.Log.Events.ScrollBox:IsVisible() then
 				for _, button in addonFrame.Log.Events.ScrollBox:EnumerateFrames() do
 					if button:IsVisible() then
-						AnimateFrameButton(button)
+						AnimateFrameButton(button, elapsedTime)
 					end
 				end
 			end
 			if addonFrame.Log.Search.ScrollBox:IsVisible() then
 				for _, button in addonFrame.Log.Search.ScrollBox:EnumerateFrames() do
 					if button:IsVisible() then
-						AnimateFrameButton(button)
+						AnimateFrameButton(button, elapsedTime)
 					end
 				end
 			end
@@ -2582,7 +2598,7 @@ do
 		if AutoComplete and AutoComplete:IsVisible() then
 			for _, button in ipairs(AutoComplete.Buttons) do
 				if button:IsVisible() then
-					AnimateAutoCompleteButton(button)
+					AnimateAutoCompleteButton(button, elapsedTime)
 				end
 			end
 		end
@@ -2592,11 +2608,13 @@ do
 			if chatFrame and chatFrame:IsVisible() then
 				for _, visibleLine in ipairs(chatFrame.visibleLines) do
 					if visibleLine:IsVisible() then
-						AnimateChatLine(visibleLine)
+						AnimateChatLine(visibleLine, elapsedTime)
 					end
 				end
 			end
 		end
+
+		elapsedTime = 0
 
 	end
 
