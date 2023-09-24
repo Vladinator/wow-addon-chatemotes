@@ -34,7 +34,7 @@ assert(type(LibStub) == "table", "ChatEmotesLib-1.0 requires LibStub")
 ---@field public emotes ChatEmotesLib-1.0_Emote[]
 ---@field public weights table<ChatEmotesLib-1.0_Emote, boolean|number>
 
-local MAJOR, MINOR = "ChatEmotesLib-1.0", 2
+local MAJOR, MINOR = "ChatEmotesLib-1.0", 3
 local CEL, OLDMINOR = LibStub:NewLibrary(MAJOR, MINOR) ---@class ChatEmotesLib-1.0
 if not CEL then return end
 
@@ -272,30 +272,51 @@ do
 
 end
 
-CEL.emoteMetatable = CEL.emoteMetatable or {
-	__index = function(self, key)
-		if key == "markup" then
-			local file = self.file
-			local fileWidth = self.fileWidth
-			local fileHeight = self.fileHeight
-			local offset = self.offset
-			local offsetL = self.offsetL
-			local offsetR = self.offsetR
-			local offsetT = self.offsetT
-			local offsetB = self.offsetB
-			local markup
-			if fileWidth and fileHeight and type(offset) == "table" then
-				markup = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", file, 0, 0, 0, 0, fileWidth, fileHeight, offset[1] * fileWidth, offset[2] * fileWidth, offset[3] * fileHeight, offset[4] * fileHeight)
-			elseif fileWidth and fileHeight and offsetL and offsetR and offsetT and offsetB then
-				markup = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", file, 0, 0, 0, 0, fileWidth, fileHeight, offsetL * fileWidth, offsetR * fileWidth, offsetT * fileHeight, offsetB * fileHeight)
-			else
-				markup = format("|T%s:0:0|t", file)
-			end
-			rawset(self, key, markup)
-			return markup
+CEL.emoteMetatable = CEL.emoteMetatable or {}
+
+---@param self ChatEmotesLib-1.0_Emote
+---@param key string
+CEL.emoteMetatable.__index = function(self, key)
+	if key == "markup" then
+		local file = self.file
+		local fileWidth = self.fileWidth
+		local fileHeight = self.fileHeight
+		local offset = self.offset
+		local offsetL = self.offsetL
+		local offsetR = self.offsetR
+		local offsetT = self.offsetT
+		local offsetB = self.offsetB
+		local markup
+		if fileWidth and fileHeight and type(offset) == "table" then
+			markup = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", file, 0, 0, 0, 0, fileWidth, fileHeight, offset[1] * fileWidth, offset[2] * fileWidth, offset[3] * fileHeight, offset[4] * fileHeight)
+		elseif fileWidth and fileHeight and offsetL and offsetR and offsetT and offsetB then
+			markup = format("|T%s:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d|t", file, 0, 0, 0, 0, fileWidth, fileHeight, offsetL * fileWidth, offsetR * fileWidth, offsetT * fileHeight, offsetB * fileHeight)
+		else
+			markup = format("|T%s:%d:%d|t", file, 0, 0)
 		end
-	end,
-}
+		rawset(self, key, markup)
+		return markup
+	end
+end
+
+---@param self ChatEmotesLib-1.0_Emote
+---@param key string
+CEL.emoteMetatable.__call = function(self, key, ...)
+	if key == "markup" then
+		---@type number?, number?
+		local height, width = ...
+		if not height then
+			height = 0
+		end
+		if not width then
+			width = height
+		end
+		local ratio = self.ratio or 1
+		local markup = self.markup
+		markup = markup:gsub(":0:0", format(":%d:%d", width, height * ratio), 1)
+		return markup
+	end
+end
 
 ---@type table<function, table<string, ChatEmotesLib-1.0_SearchCache|false|nil>>
 CEL.emoteSearchCache = CEL.emoteSearchCache or {}
@@ -741,9 +762,11 @@ end
 ---@param height? number
 ---@param links? boolean
 function CEL.SafeReplace(text, raw, emote, height, links)
-	local markup = emote.markup
+	local markup
 	if height then
-		markup = markup:gsub(":0:0", format(":%d:%d", height, height * (emote.ratio or 1)), 1)
+		markup = emote("markup", height)
+	else
+		markup = emote.markup
 	end
 	local replacement = links and format(CEL.emoteLinkFormat, CEL.emoteLinkUnique, emote.name, markup) or markup
 	if not raw then
@@ -770,13 +793,17 @@ function CEL.GetAnimatedEmoteByFile(file)
 	return CEL.GetEmoteSearch(file, CEL.filter.animatedFileFindText), file
 end
 
-if OLDMINOR == 1 then
+if OLDMINOR then
 
-	-- we need to add the index for the emote (it's not ideal but better than a nil-property)
-	for index, emote in pairs(CEL.emotes) do
-		if not emote.index then
-			emote.index = index
+	if OLDMINOR <= 1 then
+
+		-- we need to add the index for the emote (it's not ideal but better than a nil-property)
+		for index, emote in pairs(CEL.emotes) do
+			if not emote.index then
+				emote.index = index
+			end
 		end
+
 	end
 
 end

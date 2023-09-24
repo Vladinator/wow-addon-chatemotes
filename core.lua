@@ -251,12 +251,12 @@ local function LogEmoteStatistics(emotes, guid)
 	end
 end
 
----@param chatFrame ChatFrame
+---@param fontString ChatFrame|FontString
 ---@param forceScale? number|nil
 ---@param heightOffset? number|nil
 ---@return number
-local function GetHeightForChatFrame(chatFrame, forceScale, heightOffset)
-	local _, height = chatFrame:GetFont()
+local function GetHeightForFontString(fontString, forceScale, heightOffset)
+	local _, height = fontString:GetFont()
 	if not height or height < 1 then
 		height = CHAT_FRAME_DEFAULT_FONT_SIZE or 14 ---@diagnostic disable-line: undefined-global
 	end
@@ -280,7 +280,7 @@ local function ChatMessageFilter(self, event, text, playerName, languageName, ch
 	if not isActive then
 		return
 	end
-	local height = GetHeightForChatFrame(self)
+	local height = GetHeightForFontString(self)
 	local newText, usedEmotes = CEL.ReplaceEmotesInText(text, height, DB.options.emoteHover, true, MAX_EMOTES_PER_MESSAGE)
 	if newText and usedEmotes then
 		if prevLineID ~= lineID then
@@ -880,12 +880,9 @@ local function ChatFrameOnHyperlinkEnter(self, link, text)
 	if not emote then
 		return
 	end
-	if emote.animated then
-		return -- TODO: NYI
-	end	
 	GameTooltip:SetOwner(self, "ANCHOR_CURSOR", 0, 0)
 	GameTooltip:AddLine(tostring(emote.name), 1, 1, 1)
-	GameTooltip:AddLine(emote.markup:gsub(":0:0", format(":%d:%d", 32, 32 * (emote.ratio or 1)), 1), 1, 1, 1)
+	GameTooltip:AddLine(emote("markup", 32), 1, 1, 1)
 	GameTooltip:AddLine(tostring(emote.package), 0.5, 0.5, 0.5)
 	GameTooltip:AddLine(tostring(emote.folder), 0.5, 0.5, 0.5)
 	GameTooltip:Show()
@@ -1151,7 +1148,7 @@ do
 		local emote = self.emote
 		GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT", 0, 0)
 		GameTooltip:AddLine(tostring(emote.name), 1, 1, 1)
-		-- GameTooltip:AddLine(emote.markup:gsub(":0:0", format(":%d:%d", 32, 32 * (emote.ratio or 1)), 1), 1, 1, 1)
+		-- GameTooltip:AddLine(emote("markup", 32), 1, 1, 1)
 		GameTooltip:AddLine(tostring(emote.package), 0.5, 0.5, 0.5)
 		GameTooltip:AddLine(tostring(emote.folder), 0.5, 0.5, 0.5)
 		GameTooltip:Show()
@@ -2152,6 +2149,13 @@ do
 		return InputFactory:FinalizeOption(frame, fontString)
 	end
 
+	function InputFactory:CreateButton(frame, label)
+		local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+		button:SetSize(80, 24)
+		button:SetText(label)
+		return button
+	end
+
 	---@class UICheckButtonTemplate : CheckButton, ConfigWidget
 	---@field public text FontString
 
@@ -2187,6 +2191,11 @@ do
 				local emoteScale = InputFactory:CreateEditBoxNumeric(frame.ScrollFrame.ScrollChildFrame, { type = "number", key = "emoteScale", percentile = true }, L.EMOTE_SCALE) ---@class ConfigEditBoxEmoteScaleWidget : ConfigWidget, EditBox
 				emoteScale.Preview = InputFactory:CreateFontString(frame.ScrollFrame.ScrollChildFrame)
 
+				-- emoteScale.ReloadUI = InputFactory:CreateButton(frame.ScrollFrame.ScrollChildFrame, RELOADUI)
+				-- emoteScale.ReloadUI:SetPoint("LEFT", emoteScale.Label, "RIGHT", -32, 0)
+				-- emoteScale.ReloadUI:HookScript("OnClick", C_UI.Reload)
+				-- emoteScale.ReloadUI:Hide()
+
 				function emoteScale:OnShow()
 					local cvar = self.cvar
 					local key = cvar.key
@@ -2210,12 +2219,17 @@ do
 					elseif value > 999 then
 						value = 999
 					end
+					local oldValue = options[key]
 					if cvar.percentile then
 						options[key] = value / 100
 					else
 						options[key] = value
 					end
 					self:SetNumber(value)
+					if oldValue ~= value then
+						-- emoteScale.ReloadUI:Show()
+						addonAnimator:ClearCache()
+					end
 				end
 
 				---@param newEmote boolean
@@ -2235,7 +2249,7 @@ do
 				function emoteScale:UpdateEmote()
 					local emote = self.emote
 					local scale = self:GetNumber() / 100
-					local height = GetHeightForChatFrame(DEFAULT_CHAT_FRAME, scale, 3) ---@diagnostic disable-line: undefined-global
+					local height = GetHeightForFontString(DEFAULT_CHAT_FRAME, scale, 3) ---@diagnostic disable-line: undefined-global
 					local text
 					if emote then
 						text = CEL.SafeReplace(emote.name, nil, emote, height, false)
@@ -2414,50 +2428,99 @@ do
 
 	local ANIMATION_PATTERN = "(|T([^:]-)_(%d+)_(%d+)_(%d+):(.-)|t)"
 	local ANIMATION_FORMAT = "|T%s_%d_%d_%d:%s|t"
-
-	---@type table<string, string?>
-	local cachedFrames = {}
-
-	---@type table<string, string?>
-	local cachedPatterns = {}
+	local SUFFIX_SIZE_PATTERN = "^((%d+):(%d+))"
 
 	---@type table<string, ChatEmotesLib-1.0_Emote?>
 	local cachedEmotes = {}
 
+	---@type table<string, string?>
+	local cachedFrames = {}
+
 	---@type table<string, number?>
 	local cachedTimers = {}
 
+	---@type table<string, string?>
+	local cachedPatterns = {}
+
+	local function ClearCache()
+		wipe(cachedFrames)
+		wipe(cachedTimers)
+		wipe(cachedPatterns)
+	end
+
+	---@param emote ChatEmotesLib-1.0_Emote
+	---@param frameIndex number
+	---@return number? newDuration
+	local function GetNextDuration(emote, frameIndex)
+		if not emote.duration then
+			return
+		end
+		local duration
+		if type(emote.duration) == "table" then
+			if not emote.duration.length then
+				local length = 0
+				for index, _ in pairs(emote.duration) do if index > length then length = index end end ---@diagnostic disable-line: param-type-mismatch
+				emote.duration.length = length ---@diagnostic disable-line: inject-field
+			end
+			for index = 1, emote.duration.length do
+				local value = emote.duration[index]
+				if value and frameIndex >= index then
+					duration = value
+				end
+			end
+			if not duration then
+				duration = emote.duration[1]
+			end
+		elseif type(emote.duration) == "number" then
+			---@diagnostic disable-next-line: assign-type-mismatch
+			duration = emote.duration ---@type number
+		end
+		return duration
+	end
+
+	---@param suffix string
+	---@param height? number
+	---@return string? newSuffix
+	local function GetNextSuffix(suffix, height)
+		local width = height
+		local existingSize, existingWidth, existingHeight = suffix:match(SUFFIX_SIZE_PATTERN)
+		if existingSize then
+			if height then
+				existingWidth = 0 + existingWidth
+				existingHeight = 0 + existingHeight
+				if existingWidth <= 0 then existingWidth = 1 end
+				if existingHeight <= 0 then existingHeight = 1 end
+				width = height * (existingWidth/existingHeight)
+			else
+				width = existingWidth
+				height = existingHeight
+			end
+		end
+		width = width or 0
+		height = height or 0
+		local newSize = format("%d:%d", width, height)
+		local newSuffix = suffix:gsub(SUFFIX_SIZE_PATTERN, newSize, 1)
+		if suffix ~= newSuffix then
+			return newSuffix
+		end
+	end
+
+	---@param parent Region
 	---@param text string
 	---@param elapsed number
+	---@param height? number
 	---@return table<string, string>? replacements
-	local function ReplaceAnimationEmotes(text, elapsed)
+	local function ReplaceAnimationEmotes(parent, text, elapsed, height)
 		local replacements ---@type table<string, string>?
 		for emoteText, prefix, current, total, duration, suffix in text:gmatch(ANIMATION_PATTERN) do
 			if not replacements or not replacements[emoteText] then
 				current = 0 + current ---@type number
 				total = 0 + total ---@type number
 				duration = 0 + duration ---@type number
+				local uniqueEmote = format("%s:%s", tostring(parent), prefix)
 				local durationMS = duration/100
-				local nextDuration = duration
-				local timer = cachedTimers[prefix]
+				local timer = cachedTimers[uniqueEmote]
 				timer = (timer or 0) + elapsed
-				local cachedEmote = cachedEmotes[prefix]
-				if not cachedEmote then
-					cachedEmote = CEL.GetAnimatedEmoteByFile(prefix)
-					cachedEmotes[prefix] = cachedEmote
-				end
-				if cachedEmote.duration then
-					if type(cachedEmote.duration) == "table" then
-						for durationIndex, durationValue in pairs(cachedEmote.duration) do ---@diagnostic disable-line: param-type-mismatch
-							if current >= durationIndex then
-								nextDuration = durationValue
-							end
-						end
-					elseif type(cachedEmote.duration) == "number" then
-						---@diagnostic disable-next-line: assign-type-mismatch
-						nextDuration = cachedEmote.duration ---@type number
-					end
-				end
 				while timer >= durationMS do
 					timer = timer - durationMS
 					current = current + 1
@@ -2465,12 +2528,19 @@ do
 						current = 1
 					end
 				end
-				cachedTimers[prefix] = timer
-				local frameKey = format("%s:%s", prefix, current)
-				local cache = cachedFrames[frameKey]
+				cachedTimers[uniqueEmote] = timer
+				local cachedEmote = cachedEmotes[prefix]
+				if not cachedEmote then
+					cachedEmote = CEL.GetAnimatedEmoteByFile(prefix)
+					cachedEmotes[prefix] = cachedEmote
+				end
+				local uniqueFrameKey = format("%s:%s:%s", prefix, current, suffix)
+				local cache = cachedFrames[uniqueFrameKey]
 				if not cache then
-					cache = format(ANIMATION_FORMAT, prefix, current, total, nextDuration, suffix)
-					cachedFrames[frameKey] = cache
+					local nextDuration = GetNextDuration(cachedEmote, current) or duration
+					local nextSuffix = GetNextSuffix(suffix, height) or suffix
+					cache = format(ANIMATION_FORMAT, prefix, current, total, nextDuration, nextSuffix)
+					cachedFrames[uniqueFrameKey] = cache
 				end
 				if not replacements then
 					replacements = {}
@@ -2481,11 +2551,13 @@ do
 		return replacements
 	end
 
+	---@param parent Region
 	---@param text string
 	---@param elapsed number
+	---@param height? number
 	---@return string? newText
-	local function GetNextAnimationFrame(text, elapsed)
-		local replacements = ReplaceAnimationEmotes(text, elapsed)
+	local function GetNextAnimationFrame(parent, text, elapsed, height)
+		local replacements = ReplaceAnimationEmotes(parent, text, elapsed, height)
 		if not replacements then
 			return
 		end
@@ -2502,8 +2574,9 @@ do
 
 	---@param fontString FontString
 	---@param elapsed number
+	---@param height? number|true
 	---@return boolean? success
-	local function AnimateFontString(fontString, elapsed)
+	local function AnimateFontString(fontString, elapsed, height)
 		if not fontString:IsVisible() then
 			return
 		end
@@ -2511,7 +2584,10 @@ do
 		if not text then
 			return
 		end
-		local newText = GetNextAnimationFrame(text, elapsed)
+		if height == true then
+			height = GetHeightForFontString(fontString)
+		end
+		local newText = GetNextAnimationFrame(fontString, text, elapsed, height)
 		if not newText then
 			return
 		end
@@ -2550,8 +2626,9 @@ do
 
 	---@param line ChatFrameLine
 	---@param elapsed number
+	---@param height? number
 	---@return boolean? success
-	local function AnimateChatLine(line, elapsed)
+	local function AnimateChatLine(line, elapsed, height)
 		local messageInfo = line.messageInfo
 		if not messageInfo then
 			return
@@ -2560,7 +2637,7 @@ do
 		if not text then
 			return
 		end
-		local newText = GetNextAnimationFrame(text, elapsed)
+		local newText = GetNextAnimationFrame(line, text, elapsed, height)
 		if not newText then
 			return
 		end
@@ -2628,9 +2705,13 @@ do
 		for i = 1, NUM_CHAT_WINDOWS do
 			local chatFrame = _G[format("ChatFrame%d", i)] ---@type ChatFrame?
 			if chatFrame and chatFrame:IsVisible() then
+				local height
 				for _, visibleLine in ipairs(chatFrame.visibleLines) do
 					if visibleLine:IsVisible() then
-						AnimateChatLine(visibleLine, elapsedTime)
+						if not height then
+							height = GetHeightForFontString(chatFrame)
+						end
+						AnimateChatLine(visibleLine, elapsedTime, height)
 					end
 				end
 			end
@@ -2647,6 +2728,7 @@ do
 		addonAnimator:RegisterEvent("PLAYER_REGEN_ENABLED")
 		addonAnimator:SetScript("OnEvent", OnEvent)
 		addonAnimator:SetScript("OnUpdate", OnUpdate)
+		addonAnimator.ClearCache = ClearCache
 	end
 
 end
