@@ -554,7 +554,7 @@ local AutoComplete do
 			self:HideDropDown(editBox, true)
 			return
 		end
-		self:SetParent(editBox)
+		self:SetParent(editBox) ---@diagnostic disable-line: param-type-mismatch
 		if self.editBox ~= editBox then
 			self.altArrowKeyMode = editBox:GetAltArrowKeyMode()
 		end
@@ -2420,6 +2420,7 @@ local function CreateSlashCommand()
 	return CommandHandler
 end
 
+-- TODO: the animation support should be moved into the library and instead register the areas which one wishes it to update
 local CreateAnimator
 
 do
@@ -2521,6 +2522,10 @@ do
 				local durationMS = duration/100
 				local timer = cachedTimers[uniqueEmote]
 				timer = (timer or 0) + elapsed
+				-- TODO: there is a minor bug where this skip can cause multiple frames to have their duration also skipped
+				-- to fix this we would need to per frame skipped also substract the original duration for that frame
+				-- this is costly and we currently only do this further down this block but it's such a minor visual artifact
+				-- I'm just noting the issue here for future me to fix (this whole code should be part of the library anyway)
 				while timer >= durationMS do
 					timer = timer - durationMS
 					current = current + 1
