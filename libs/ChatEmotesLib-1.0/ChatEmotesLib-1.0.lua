@@ -303,8 +303,10 @@ end
 ---@param key string
 CEL.emoteMetatable.__call = function(self, key, ...)
 	if key == "markup" then
-		---@type number?, number?
-		local height, width = ...
+		---@type number?, number?, boolean?, boolean?
+		local height, width, keepInside, keepLargeEnough = ...
+		keepInside = keepInside == true
+		keepLargeEnough = keepLargeEnough == true
 		if not height then
 			height = 0
 		end
@@ -313,7 +315,24 @@ CEL.emoteMetatable.__call = function(self, key, ...)
 		end
 		local ratio = self.ratio or 1
 		local markup = self.markup
-		markup = markup:gsub(":0:0", format(":%d:%d", width, height * ratio), 1)
+		local setWidth = width
+		local setHeight = height * ratio
+		if keepInside and (setWidth > width or setHeight > height) then
+			local scale = setWidth / setHeight
+			setWidth = setWidth * scale
+			setHeight = setHeight * scale
+		end
+		if keepLargeEnough then
+			local halfWidth = width/2
+			local halfHeight = height/2
+			if setWidth < halfWidth then
+				setWidth = halfWidth
+			end
+			if setHeight < halfHeight then
+				setHeight = halfHeight
+			end
+		end
+		markup = markup:gsub(":0:0", format(":%d:%d", setWidth, setHeight), 1)
 		return markup
 	end
 end

@@ -266,6 +266,26 @@ local function GetHeightForFontString(fontString, forceScale, heightOffset)
 	return height * (forceScale or DB.options.emoteScale)
 end
 
+---@param emote ChatEmotesLib-1.0_Emote
+---@param heightOrObject (number|Region)?
+---@param ignoreBoundaries boolean?
+---@return string markup
+local function GetMarkupForEmote(emote, heightOrObject, ignoreBoundaries)
+	if not heightOrObject then
+		return emote.markup
+	end
+	local keepInside = ignoreBoundaries ~= true
+	if type(heightOrObject) == "number" then
+		return emote("markup", heightOrObject, nil, keepInside, keepInside)
+	end
+	local height = heightOrObject:GetHeight()
+	local width = heightOrObject:GetWidth()
+	if height then
+		return emote("markup", height, width, keepInside, keepInside)
+	end
+	return emote.markup
+end
+
 local prevLineID
 
 ---@param self ChatFrame
@@ -622,12 +642,13 @@ local AutoComplete do
 		local totalReturns = #results
 		local numResults = min(totalReturns, AUTOCOMPLETE_MAX_BUTTONS)
 		local maxWidth = BUTTON_WIDTH
+		local maxEmoteSize = 12
 		for i = 1, numResults do
 			local result = self.results[i]
 			local emote = result.emote
 			local button = self.Buttons[i]
 			button.result = result
-			button:SetFormattedText("%s |cff%s%s|r", emote.markup, result.favorite and "FFFF00" or "FFFFFF", emote.name) ---@diagnostic disable-line: redundant-parameter
+			button:SetFormattedText("%s |cff%s%s|r", GetMarkupForEmote(emote, maxEmoteSize), result.favorite and "FFFF00" or "FFFFFF", emote.name) ---@diagnostic disable-line: redundant-parameter
 			maxWidth = max(maxWidth, button.Text:GetStringWidth() + BUTTON_PADDING_X)
 			button:Show()
 		end
@@ -882,7 +903,7 @@ local function ChatFrameOnHyperlinkEnter(self, link, text)
 	end
 	GameTooltip:SetOwner(self, "ANCHOR_CURSOR", 0, 0)
 	GameTooltip:AddLine(tostring(emote.name), 1, 1, 1)
-	GameTooltip:AddLine(emote("markup", 32), 1, 1, 1)
+	GameTooltip:AddLine(GetMarkupForEmote(emote, 32), 1, 1, 1)
 	GameTooltip:AddLine(tostring(emote.package), 0.5, 0.5, 0.5)
 	GameTooltip:AddLine(tostring(emote.folder), 0.5, 0.5, 0.5)
 	GameTooltip:Show()
@@ -1036,16 +1057,6 @@ do
 	function UIScrollBoxEmoteButtonMixin:OnLoad()
 		-- self:SetHeight(ButtonSize)
 		self:SetSize(ScrollBoxEmoteButtonSize, ScrollBoxEmoteButtonSize) -- grid
-		-- self.RightLabel = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		-- self.RightLabel:SetJustifyH("RIGHT")
-		-- self.RightLabel:SetHeight(ButtonSize)
-		-- self.RightLabel:SetPoint("RIGHT", -5, 0)
-		-- self.RightLabel:SetScale(2)
-		-- self.LeftLabel = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		-- self.LeftLabel:SetJustifyH("LEFT")
-		-- self.LeftLabel:SetHeight(ButtonSize)
-		-- self.LeftLabel:SetPoint("LEFT", 5, 0)
-		-- self.LeftLabel:SetPoint("RIGHT", self.RightLabel, "LEFT", -5, 0)
 		self.Label = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 		self.Label:SetJustifyH("CENTER")
 		self.Label:SetJustifyV("MIDDLE")
@@ -1134,10 +1145,8 @@ do
 
 	---@param emote ChatEmotesLib-1.0_Emote
 	function UIScrollBoxEmoteButtonMixin:Init(emote)
-		-- self.LeftLabel:SetText(emote.name)
-		-- self.RightLabel:SetText(emote.markup)
 		self.emote = emote
-		self.Label:SetText(emote.markup)
+		self.Label:SetText(GetMarkupForEmote(emote, self.Label))
 		self.FlashOverlay:Stop()
 		self.FlashOverlay:Finish()
 		self:Update()
@@ -1148,7 +1157,7 @@ do
 		local emote = self.emote
 		GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT", 0, 0)
 		GameTooltip:AddLine(tostring(emote.name), 1, 1, 1)
-		-- GameTooltip:AddLine(emote("markup", 32), 1, 1, 1)
+		-- GameTooltip:AddLine(GetMarkupForEmote("markup", 32), 1, 1, 1)
 		GameTooltip:AddLine(tostring(emote.package), 0.5, 0.5, 0.5)
 		GameTooltip:AddLine(tostring(emote.folder), 0.5, 0.5, 0.5)
 		GameTooltip:Show()
@@ -1719,7 +1728,7 @@ do
 			text = NO_EMOTE_MARKUP_FALLBACK
 		else
 			local emote = GetRandomEmote()
-			text = emote.markup
+			text = GetMarkupForEmote(emote, 14)
 		end
 		self.Text:SetText(text)
 	end
@@ -2789,9 +2798,9 @@ local function Init()
 			editBox:HookScript("OnKeyUp", ChatEditBoxOnKeyUp)
 			editBox:HookScript("OnTabPressed", ChatEditBoxOnTabPressed)
 			editBox:HookScript("OnEscapePressed", ChatEditBoxOnFocusLost)
-			chatFrame:HookScript("OnHyperlinkClick", ChatFrameOnHyperlinkClick)
-			chatFrame:HookScript("OnHyperlinkEnter", ChatFrameOnHyperlinkEnter)
-			chatFrame:HookScript("OnHyperlinkLeave", ChatFrameOnHyperlinkLeave)
+			chatFrame:HookScript("OnHyperlinkClick", ChatFrameOnHyperlinkClick) ---@diagnostic disable-line: param-type-mismatch
+			chatFrame:HookScript("OnHyperlinkEnter", ChatFrameOnHyperlinkEnter) ---@diagnostic disable-line: param-type-mismatch
+			chatFrame:HookScript("OnHyperlinkLeave", ChatFrameOnHyperlinkLeave) ---@diagnostic disable-line: param-type-mismatch
 		end
 	end
 	CreateSlashCommand()
