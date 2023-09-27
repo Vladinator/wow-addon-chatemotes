@@ -648,7 +648,7 @@ local AutoComplete do
 			local emote = result.emote
 			local button = self.Buttons[i]
 			button.result = result
-			button:SetFormattedText("%s |cff%s%s|r", GetMarkupForEmote(emote, maxEmoteSize), result.favorite and "FFFF00" or "FFFFFF", emote.name) ---@diagnostic disable-line: redundant-parameter
+			button:SetFormattedText("%s |cff%s%s|r", GetMarkupForEmote(emote, maxEmoteSize), result.favorite and "FFFF55" or "FFFFFF", emote.name)
 			maxWidth = max(maxWidth, button.Text:GetStringWidth() + BUTTON_PADDING_X)
 			button:Show()
 		end
