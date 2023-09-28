@@ -484,7 +484,7 @@ local AutoComplete do
 			local emote = emotes[i] ---@type ChatEmotesLib-1.0_Emote
 			if not emote.ignoreSuggestion then
 				local isFavorite = IsFavorite(emote)
-				local priority = (isFavorite and 0 or 1000) + (emote.name:find(query) or (100 + (emote.name:lower():find(query:lower()) or 99)))
+				local priority = (isFavorite and 0 or 1000) + (emote.name:find(query, nil, true) or (100 + (emote.name:lower():find(query:lower(), nil, true) or 99)))
 				index = index + 1
 				results[index] = { ---@type AutoCompleteResult
 					priority = priority,
@@ -1146,7 +1146,7 @@ do
 	---@param emote ChatEmotesLib-1.0_Emote
 	function UIScrollBoxEmoteButtonMixin:Init(emote)
 		self.emote = emote
-		self.Label:SetText(GetMarkupForEmote(emote, self.Label))
+		self.Label:SetText(GetMarkupForEmote(emote, 14)) -- self.Label
 		self.FlashOverlay:Stop()
 		self.FlashOverlay:Finish()
 		self:Update()
@@ -1198,9 +1198,9 @@ do
 		self.FlashOverlay:Play()
 	end
 
-	local MinPanelWidth = 380
+	local MinPanelWidth = 400
 	local MinPanelHeight = 320
-	local MaxPanelWidth = MinPanelWidth * 1.8421
+	local MaxPanelWidth = MinPanelWidth * 2
 	local MaxPanelHeight = MinPanelHeight * 2
 	local DefaultPanelWidth = MinPanelWidth
 	local DefaultPanelHeight = MinPanelHeight
@@ -1371,26 +1371,32 @@ do
 	---@param elementData ChatEmotesLib-1.0_Emote
 	---@param search string
 	function UIMixin:TryAddToSearch(elementData, search)
-		if not search or search:len() == 0 then
+		if not search or search == "" then
 			return false
 		end
-		if search:trim():len() < 2 then ---@diagnostic disable-line: undefined-field
+		local searchTrimmed = search:trim() ---@diagnostic disable-line: undefined-field
+		if searchTrimmed:len() < 2 then
 			return false
 		end
-		local searchLC = search:lower()
+		local searchLC = searchTrimmed:lower()
 		local found
-		if elementData.name:lower():find(searchLC) then
+		if searchLC == "animated" then
+			found = elementData.animated
+		elseif elementData.package:lower():find(searchLC, nil, true) == 1 then
+			found = true
+		elseif elementData.folder:lower():find(searchLC, nil, true) == 1 then
+			found = true
+		elseif elementData.name:lower():find(searchLC, nil, true) then
 			found = true
 		elseif elementData.alias then
 			for _, alias in ipairs(elementData.alias) do
-				if alias:lower():find(searchLC) then
+				if alias:lower():find(searchLC, nil, true) then
 					found = true
 					break
 				end
 			end
 		end
 		if found then
-			---@diagnostic disable-next-line: redundant-parameter
 			self.searchDataProvider:Insert(elementData)
 			-- self.searchDataProvider:Insert(CopyTable(elementData, true)) -- shallow
 			return true
