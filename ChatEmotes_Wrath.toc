@@ -3,7 +3,7 @@
 ## Title: Chat Emotes
 ## Notes: Yet another emotes related chat addon, jeez...
 ## Author: Vladinator (Vladinator-TarrenMill)
-## Version: 3.4.2.230927 (@project-version@)
+## Version: 3.4.2.230930 (@project-version@)
 ## SavedVariables: ChatEmotesDB
 ## Dependencies: 
 ## X-Curse-Project-ID: 551565
