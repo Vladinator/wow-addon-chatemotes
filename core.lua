@@ -2499,22 +2499,23 @@ do
 	---@return string? newSuffix
 	local function GetNextSuffix(suffix, height)
 		local width = height
-		local existingSize, existingWidth, existingHeight = suffix:match(SUFFIX_SIZE_PATTERN)
+		local existingSize, existingHeight, existingWidth = suffix:match(SUFFIX_SIZE_PATTERN)
 		if existingSize then
 			if height then
-				existingWidth = 0 + existingWidth
 				existingHeight = 0 + existingHeight
-				if existingWidth <= 0 then existingWidth = 1 end
+				existingWidth = 0 + existingWidth
 				if existingHeight <= 0 then existingHeight = 1 end
-				width = height * (existingWidth/existingHeight)
+				if existingWidth <= 0 then existingWidth = 1 end
+				height = floor(height + 0.5)
+				width = floor(height * (existingWidth/existingHeight) + 0.5)
 			else
-				width = existingWidth
 				height = existingHeight
+				width = existingWidth
 			end
 		end
-		width = width or 0
 		height = height or 0
-		local newSize = format("%d:%d", width, height)
+		width = width or 0
+		local newSize = format("%d:%d", height, width)
 		local newSuffix = suffix:gsub(SUFFIX_SIZE_PATTERN, newSize, 1)
 		if suffix ~= newSuffix then
 			return newSuffix
