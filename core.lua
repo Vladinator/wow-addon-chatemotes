@@ -130,6 +130,9 @@ local ignoreChannels = {
 	-- [41] = true, -- ChromieTime (Chromie Time - Legion)
 }
 
+---@type table<ChatFrame, true?>
+local hookedChatFrames = {}
+
 ---@class ScrollingMessageFrame : FontString, Frame
 
 ---@class ChatFrameEditBox : EditBox
@@ -2723,9 +2726,8 @@ do
 			end
 		end
 
-		for i = 1, NUM_CHAT_WINDOWS do
-			local chatFrame = _G[format("ChatFrame%d", i)] ---@type ChatFrame?
-			if chatFrame and chatFrame:IsVisible() then
+		for chatFrame, _ in pairs(hookedChatFrames) do
+			if chatFrame:IsVisible() then
 				local height
 				for _, visibleLine in ipairs(chatFrame.visibleLines) do
 					if visibleLine:IsVisible() then
@@ -2756,8 +2758,9 @@ end
 
 local function UpdateChannels()
 	wipe(activeChannels)
-	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
-		local channels = { GetChatWindowChannels(i) }
+	for chatFrame, _ in pairs(hookedChatFrames) do
+		local index = chatFrame:GetID()
+		local channels = { GetChatWindowChannels(index) }
 		for j = 1, #channels, 2 do
 			local channel, id = channels[j], channels[j + 1] ---@type string|number, number|string
 			activeChannels[channel] = id
@@ -2787,16 +2790,14 @@ local function InitDB()
 	AutoComplete:SetFontObjectPreset()
 end
 
-local function Init()
-	sortedEmotes = CEL.GetEmotes()
-	table.sort(sortedEmotes, SortEmotes)
-	UpdateChannelsReduntant()
-	for _, event in ipairs(supportedChatEvents) do
-		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
-	end
-	for i = 1, NUM_CHAT_WINDOWS do ---@diagnostic disable-line: undefined-global
+local function HookChatFrames()
+	for i = 1, NUM_CHAT_WINDOWS + 1000 do
 		local chatFrame = _G[format("ChatFrame%d", i)] ---@type ChatFrame?
-		if chatFrame then
+		if not chatFrame and i > NUM_CHAT_WINDOWS then
+			break
+		end
+		if chatFrame and not hookedChatFrames[chatFrame] then
+			hookedChatFrames[chatFrame] = true
 			local editBox = chatFrame.editBox
 			editBox:HookScript("OnTextChanged", ChatEditBoxOnChanged)
 			editBox:HookScript("OnChar", ChatEditBoxOnChanged)
@@ -2810,6 +2811,16 @@ local function Init()
 			chatFrame:HookScript("OnHyperlinkLeave", ChatFrameOnHyperlinkLeave) ---@diagnostic disable-line: param-type-mismatch
 		end
 	end
+end
+
+local function Init()
+	sortedEmotes = CEL.GetEmotes()
+	table.sort(sortedEmotes, SortEmotes)
+	UpdateChannelsReduntant()
+	for _, event in ipairs(supportedChatEvents) do
+		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
+	end
+	HookChatFrames()
 	CreateSlashCommand()
 	CreateAnimator()
 	addonButton = CreateButton("VladsChatEmotesButton")
@@ -2819,6 +2830,8 @@ addon:SetScript("OnEvent", function(self, event, ...) self[event](self, event, .
 addon:RegisterEvent("ADDON_LOADED")
 
 local function InitChannelMonitor()
+	hooksecurefunc("FCF_OpenTemporaryWindow", HookChatFrames)
+	hooksecurefunc("AddChatWindowChannel", HookChatFrames)
 	hooksecurefunc("AddChatWindowChannel", UpdateChannelsReduntant)
 	hooksecurefunc("RemoveChatWindowChannel", UpdateChannelsReduntant)
 	addon.CHANNEL_UI_UPDATE = UpdateChannels
