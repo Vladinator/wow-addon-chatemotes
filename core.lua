@@ -329,9 +329,9 @@ local GameFontHighlightLarge = GameFontHighlightLarge ---@diagnostic disable-lin
 ---@class AutoCompleteFontPreset
 ---@field public id number
 ---@field public text string
----@field public disabled FontString
----@field public normal FontString
----@field public highlight FontString
+---@field public disabled FontString|Font
+---@field public normal FontString|Font
+---@field public highlight FontString|Font
 
 ---@type AutoCompleteFontPreset[]
 local AutoCompleteFontPresets = {
@@ -773,8 +773,8 @@ local AutoComplete do
 		end
 		self.Instructions:SetFontObject(fontObjectPreset.disabled) ---@diagnostic disable-line: param-type-mismatch
 		for _, button in pairs(self.Buttons) do
-			button:SetNormalFontObject(fontObjectPreset.normal)
-			button:SetHighlightFontObject(fontObjectPreset.highlight)
+			button:SetNormalFontObject(fontObjectPreset.normal) ---@diagnostic disable-line: param-type-mismatch
+			button:SetHighlightFontObject(fontObjectPreset.highlight) ---@diagnostic disable-line: param-type-mismatch
 		end
 		self.Instructions:SetHeight(self.Instructions:GetStringHeight()) ---@diagnostic disable-line: param-type-mismatch
 		self.fontObjectPreset = fontObjectPreset
@@ -960,6 +960,7 @@ local CreateConfig
 do
 
 	---@class CallbackRegistryMixin : Frame
+	---@field public OnLoad function
 	---@field public GenerateCallbackEvents function
 	---@field public TriggerEvent function
 	---@field public RegisterCallback fun(self: CallbackRegistryMixin, event: any, callback: fun(...: any), context: any)
@@ -1003,10 +1004,7 @@ do
 	---@field public IsAcquireLocked fun(self: ScrollBoxListViewMixin)
 	---@field public FullUpdateInternal fun(self: ScrollBoxListViewMixin)
 	---@field public Update fun(self: ScrollBoxListViewMixin, forceLayout: boolean?)
-	---@field public ScrollToNearest fun(self: ScrollBoxListViewMixin, dataIndex: number, noInterpolation: any)
-	---@field public ScrollToElementDataIndex fun(self: ScrollBoxListViewMixin, dataIndex: number, alignment: any, noInterpolation: any)
-	---@field public ScrollToElementData fun(self: ScrollBoxListViewMixin, elementData: ChatEmotesLib-1.0_Emote, alignment: any, noInterpolation: any): ChatEmotesUIScrollBoxEmoteButtonMixin?
-	---@field public ScrollToElementDataByPredicate fun(self: ScrollBoxListViewMixin, predicate: (fun(elementData: ChatEmotesLib-1.0_Emote): boolean?), alignment: any, noInterpolation: any): ChatEmotesUIScrollBoxEmoteButtonMixin?
+	---@field public ScrollToElementDataByPredicate fun(self: ScrollBoxListViewMixin, predicate: (fun(elementData: ChatEmotesLib-1.0_Emote): boolean?), alignment?: number, offset?: number, noInterpolation?: boolean): ChatEmotesUIScrollBoxEmoteButtonMixin?
 
 	---@class WowScrollBoxList : ScrollBoxListViewMixin, Frame
 	---@field public Background Texture
@@ -1458,15 +1456,14 @@ do
 			local pendingSearch = self.pendingSearch
 			if pendingSearch then
 				self.pendingSearch = nil
-				local found = self.Log.Search.ScrollBox:ScrollToElementDataByPredicate(
-					function(elementData) ---@param elementData ChatEmotesLib-1.0_Emote
-						return elementData == pendingSearch
-					end,
+				local element = self.Log.Search.ScrollBox:ScrollToElementDataByPredicate(
+					function(elementData) return elementData == pendingSearch end,
 					ScrollBoxConstants.AlignCenter,
+					0,
 					ScrollBoxConstants.NoScrollInterpolation
 				)
-				if found then
-					local button = self.Log.Search.ScrollBox:FindFrame(found)
+				if element then
+					local button = self.Log.Search.ScrollBox:FindFrame(element)
 					if button then
 						button:Flash()
 					end
@@ -1594,15 +1591,16 @@ do
 	---@param emote ChatEmotesLib-1.0_Emote
 	function UIMixin:ShowEmote(emote)
 		self:Show()
-		local found = self.Log.Events.ScrollBox:ScrollToElementDataByPredicate(
-			function(data) return data == emote end,
+		local element = self.Log.Events.ScrollBox:ScrollToElementDataByPredicate(
+			function(elementData) return elementData == emote end,
 			ScrollBoxConstants.AlignCenter,
+			0,
 			ScrollBoxConstants.NoScrollInterpolation
 		)
-		if not found then
+		if not element then
 			return
 		end
-		local button = self.Log.Events.ScrollBox:FindFrame(found)
+		local button = self.Log.Events.ScrollBox:FindFrame(element)
 		if button then
 			button:Flash()
 		end
