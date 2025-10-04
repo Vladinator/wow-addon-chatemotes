@@ -1,6 +1,12 @@
 local CEL = LibStub and LibStub("ChatEmotesLib-1.0", true) ---@type ChatEmotesLib-1.0
 if not CEL then return end
 
+local NUM_CHAT_WINDOWS = NUM_CHAT_WINDOWS or Constants.ChatFrameConstants.MaxChatWindows or 10
+local ChatFrame_AddMessageEventFilter = ChatFrame_AddMessageEventFilter or ChatFrameUtil.AddMessageEventFilter ---@type fun(event: WowEvent, callback: function)
+local ChatEdit_GetActiveWindow = ChatEdit_GetActiveWindow or ChatFrameUtil.GetActiveWindow ---@type fun(): ChatFrame?
+local ChatEdit_InsertLink = ChatEdit_InsertLink or ChatFrameUtil.InsertLink ---@type fun(text: string)
+local ChatFrame_OpenChat = ChatFrame_OpenChat or ChatFrameUtil.OpenChat ---@type fun(text: string)
+
 local _G = _G
 local strlenutf8 = _G.strlenutf8
 
@@ -1512,7 +1518,7 @@ do
 			view:SetElementExtent(ScrollBoxEmoteButtonSize)
 			---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
 			---@param emote ChatEmotesLib-1.0_Emote
-			view:SetElementInitializer("Button", function(button, emote)
+			view:SetElementInitializer("ChatEmotesEmoteButton", function(button, emote)
 				if not button.isInitialized then
 					button.isInitialized = true
 					Mixin(button, UIScrollBoxEmoteButtonMixin)
@@ -1525,7 +1531,9 @@ do
 			local pad = 2
 			local spacing = 2
 			view:SetPadding(pad, pad, pad, pad, spacing, spacing)
-			view:SetHorizontal(false)
+			if view.SetHorizontal then -- TODO: 12.0
+				view:SetHorizontal(false)
+			end
 			view:SetStride(ScrollBoxEmoteButtonSize)
 			view:SetStrideExtent(ScrollBoxEmoteButtonSize)
 			ScrollUtil.InitScrollBoxWithScrollBar(self.Log.Events.ScrollBox, self.Log.Events.ScrollBar, view)
@@ -1552,7 +1560,7 @@ do
 			view:SetElementExtent(ScrollBoxEmoteButtonSize)
 			---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
 			---@param emote ChatEmotesLib-1.0_Emote
-			view:SetElementInitializer("Button", function(button, emote)
+			view:SetElementInitializer("ChatEmotesEmoteButton", function(button, emote)
 				if not button.isInitialized then
 					button.isInitialized = true
 					Mixin(button, UIScrollBoxEmoteButtonMixin)
@@ -1565,7 +1573,9 @@ do
 			local pad = 2
 			local spacing = 2
 			view:SetPadding(pad, pad, pad, pad, spacing, spacing)
-			view:SetHorizontal(false)
+			if view.SetHorizontal then -- TODO: 12.0
+				view:SetHorizontal(false)
+			end
 			view:SetStride(ScrollBoxEmoteButtonSize)
 			view:SetStrideExtent(ScrollBoxEmoteButtonSize)
 			ScrollUtil.InitScrollBoxWithScrollBar(self.Log.Search.ScrollBox, self.Log.Search.ScrollBar, view)
@@ -2816,7 +2826,7 @@ local function Init()
 	table.sort(sortedEmotes, SortEmotes)
 	UpdateChannelsReduntant()
 	for _, event in ipairs(supportedChatEvents) do
-		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter) ---@diagnostic disable-line: undefined-global
+		ChatFrame_AddMessageEventFilter(event, ChatMessageFilter)
 	end
 	HookChatFrames()
 	CreateSlashCommand()
