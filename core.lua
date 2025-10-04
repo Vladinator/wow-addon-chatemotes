@@ -2666,6 +2666,9 @@ do
 			return
 		end
 		local text = messageInfo.message
+		if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+			return
+		end
 		if not text then
 			return
 		end
