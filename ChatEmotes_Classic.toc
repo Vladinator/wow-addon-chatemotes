@@ -5,7 +5,7 @@
 ## Author: Vladinator (Vladinator-TarrenMill)
 ## Version: 1.15.5.241124 (@project-version@)
 ## SavedVariables: ChatEmotesDB
-## Dependencies: 
+## OptionalDeps: Prat-3.0, Chattynator
 ## X-Curse-Project-ID: 551565
 ## X-WoWI-ID: 26188
 ## X-Wago-ID: PANzvjN4

@@ -6,6 +6,7 @@ local ChatFrame_AddMessageEventFilter = ChatFrame_AddMessageEventFilter or ChatF
 local ChatEdit_GetActiveWindow = ChatEdit_GetActiveWindow or ChatFrameUtil.GetActiveWindow ---@type fun(): ChatFrame?
 local ChatEdit_InsertLink = ChatEdit_InsertLink or ChatFrameUtil.InsertLink ---@type fun(text: string)
 local ChatFrame_OpenChat = ChatFrame_OpenChat or ChatFrameUtil.OpenChat ---@type fun(text: string)
+local issecretvalue = issecretvalue -- TODO: 12.0
 
 local _G = _G
 local strlenutf8 = _G.strlenutf8
@@ -2448,6 +2449,8 @@ end
 
 -- TODO: the animation support should be moved into the library and instead register the areas which one wishes it to update
 local CreateAnimator
+local AnimatorHandler
+local GetNextAnimationFrame
 
 do
 
@@ -2588,7 +2591,7 @@ do
 	---@param elapsed number
 	---@param height? number
 	---@return string? newText
-	local function GetNextAnimationFrame(parent, text, elapsed, height)
+	function GetNextAnimationFrame(parent, text, elapsed, height)
 		local replacements = ReplaceAnimationEmotes(parent, text, elapsed, height)
 		if not replacements then
 			return
@@ -2696,6 +2699,23 @@ do
 		end
 	end
 
+	---@param elapsedTime number
+	function AnimatorHandler(elapsedTime)
+		for chatFrame, _ in pairs(hookedChatFrames) do
+			if chatFrame:IsVisible() then
+				local height
+				for _, visibleLine in ipairs(chatFrame.visibleLines) do
+					if visibleLine:IsVisible() then
+						if not height then
+							height = GetHeightForFontString(chatFrame)
+						end
+						AnimateChatLine(visibleLine, elapsedTime, height)
+					end
+				end
+			end
+		end
+	end
+
 	local elapsedTime = 0
 
 	---@param self ChatEmotesAnimatorMixin
@@ -2737,19 +2757,7 @@ do
 			end
 		end
 
-		for chatFrame, _ in pairs(hookedChatFrames) do
-			if chatFrame:IsVisible() then
-				local height
-				for _, visibleLine in ipairs(chatFrame.visibleLines) do
-					if visibleLine:IsVisible() then
-						if not height then
-							height = GetHeightForFontString(chatFrame)
-						end
-						AnimateChatLine(visibleLine, elapsedTime, height)
-					end
-				end
-			end
-		end
+		AnimatorHandler(elapsedTime)
 
 		elapsedTime = 0
 
@@ -2861,6 +2869,67 @@ local function InitChannelMonitor()
 	addon:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 end
 
+local function InitChattynator()
+	local Chattynator = Chattynator
+	if not Chattynator or not Chattynator.API or not Chattynator.API.GetHyperlinkHandler then
+		return
+	end
+	local handler = Chattynator.API.GetHyperlinkHandler()
+	if not handler then
+		return
+	end
+	---@class ChattynatorPolyfillMessageFrame : Frame
+	---@field public data { timestamp: number; text: string }
+	---@field public DisplayString FontString
+	---@field public UpdateWidgets fun(self, width: number)
+	---@return (fun(): ChattynatorPolyfillMessageFrame)?
+	local function getScrollingMessages()
+		for _, frame in ipairs({handler:GetChildren()}) do
+			if frame.ScrollingMessages then
+				return frame.ScrollingMessages.messagePool:EnumerateActive()
+			end
+		end
+	end
+	---@param line ChattynatorPolyfillMessageFrame
+	---@param elapsed number
+	---@param height? number
+	local function animateChatLine(line, elapsed, height)
+		local text = line.data.text
+		if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+			return
+		end
+		if not text then
+			return
+		end
+		local newText = GetNextAnimationFrame(line.DisplayString, text, elapsed, height)
+		if not newText then
+			return
+		end
+		if text == newText then
+			return
+		end
+		line.data.text = newText
+		line.DisplayString:SetText(newText)
+		local textHeight = line.DisplayString:GetStringHeight()
+		line:SetHeight(textHeight)
+	end
+	-- local profiles = CHATTYNATOR_CONFIG and CHATTYNATOR_CONFIG.Profiles
+	-- local profile = profiles and CHATTYNATOR_CURRENT_PROFILE and profiles[CHATTYNATOR_CURRENT_PROFILE]
+	---@param elapsedTime number
+	function AnimatorHandler(elapsedTime)
+		-- local height = profile and profile.message_font_size or 14
+		local height ---@type number?
+		for frame in getScrollingMessages() do
+			if frame:IsVisible() then
+				if not height then
+					height = GetHeightForFontString(frame.DisplayString)
+				end
+				animateChatLine(frame, elapsedTime, height)
+			end
+		end
+	end
+end
+
 function addon:ADDON_LOADED(event, name)
 	if name ~= addonName then
 		return
@@ -2870,6 +2939,7 @@ function addon:ADDON_LOADED(event, name)
 		InitDB()
 		Init()
 		InitChannelMonitor()
+		InitChattynator()
 	end)
 end
 
