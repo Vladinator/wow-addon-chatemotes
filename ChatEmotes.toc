@@ -1,11 +1,11 @@
-## Interface: 110005, 120000
+## Interface: 110207, 120000
 ## IconTexture: 2056011
 ## Title: Chat Emotes
 ## Notes: Yet another emotes related chat addon, jeez...
 ## Author: Vladinator (Vladinator-TarrenMill)
-## Version: 11.0.5.241124 (@project-version@)
+## Version: 11.2.7.251206 (@project-version@)
 ## SavedVariables: ChatEmotesDB
-## OptionalDeps: Prat-3.0, Chattynator
+## OptionalDeps: Chattynator, ls_Glass, Prat-3.0
 ## X-Curse-Project-ID: 551565
 ## X-WoWI-ID: 26188
 ## X-Wago-ID: PANzvjN4

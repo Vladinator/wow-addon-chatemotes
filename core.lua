@@ -6,7 +6,7 @@ local ChatFrame_AddMessageEventFilter = ChatFrame_AddMessageEventFilter or ChatF
 local ChatEdit_GetActiveWindow = ChatEdit_GetActiveWindow or ChatFrameUtil.GetActiveWindow ---@type fun(): ChatFrame?
 local ChatEdit_InsertLink = ChatEdit_InsertLink or ChatFrameUtil.InsertLink ---@type fun(text: string)
 local ChatFrame_OpenChat = ChatFrame_OpenChat or ChatFrameUtil.OpenChat ---@type fun(text: string)
-local issecretvalue = issecretvalue ---@type fun()? -- TODO: 12.0
+local issecretvalue = issecretvalue ---@type fun(value: any)? -- TODO: 12.0
 
 local _G = _G
 local strlenutf8 = _G.strlenutf8
@@ -2880,78 +2880,6 @@ end
 ---@type ChatEmotesThirdPartyAddOnInfo[]
 local thirdPartyAddOns = {
 	{
-		name = "ls_Glass",
-		canLoad = function(self)
-			local glassFrame1 = LSGlassFrame1 ---@diagnostic disable-line: undefined-global
-			return type(glassFrame1) == "table" and type(glassFrame1.ChatFrame) == "table" and glassFrame1.ChatFrame:GetName() == "ChatFrame1"
-		end,
-		load = function(self)
-
-			---@class LSGlassFramePolyfillMessageFrame : Frame
-			---@field public ChatFrame ChatFrame
-			---@field public activeMessages LSGlassFramePolyfillActiveMessageFrame[]
-
-			---@class LSGlassFramePolyfillActiveMessageFrame : Frame
-			---@field public Text FontString
-			---@field public GetText fun(self: LSGlassFramePolyfillActiveMessageFrame): string
-			---@field public SetText fun(self: LSGlassFramePolyfillActiveMessageFrame, text: string)
-
-			---@type LSGlassFramePolyfillMessageFrame[]
-			local glassFrames = {}
-			local glassFrameCount = 0
-
-			for i = 1, NUM_CHAT_WINDOWS + 1000 do
-				local glassFrame = _G[format("LSGlassFrame%d", i)] ---@type LSGlassFramePolyfillMessageFrame?
-				if not glassFrame and i > NUM_CHAT_WINDOWS then
-					break
-				end
-				if glassFrame then
-					glassFrameCount = glassFrameCount + 1
-					glassFrames[glassFrameCount] = glassFrame
-				end
-			end
-
-			---@param line LSGlassFramePolyfillActiveMessageFrame
-			---@param elapsed number
-			---@param height? number
-			local function animateChatLine(line, elapsed, height)
-				local text = line:GetText()
-				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
-					return
-				end
-				if not text then
-					return
-				end
-				local newText = GetNextAnimationFrame(line, text, elapsed, height)
-				if not newText then
-					return
-				end
-				line:SetText(newText)
-			end
-
-			---@type ChatEmotesThirdPartyAddOnInfoResult
-			return {
-				animatorHandler = function(elapsedTime)
-					for i = 1, glassFrameCount do
-						local glassFrame = glassFrames[i]
-						if glassFrame:IsVisible() then
-							local height ---@type number?
-							for _, activeMessage in ipairs(glassFrame.activeMessages) do
-								if activeMessage:IsVisible() then
-									if not height then
-										height = GetHeightForFontString(activeMessage.Text)
-									end
-									animateChatLine(activeMessage, elapsedTime, height)
-								end
-							end
-						end
-					end
-				end,
-			}
-
-		end,
-	},
-	{
 		name = "Chattynator",
 		canLoad = function(self)
 			---@diagnostic disable-next-line: undefined-global
@@ -3022,6 +2950,78 @@ local thirdPartyAddOns = {
 								height = GetHeightForFontString(frame.DisplayString)
 							end
 							animateChatLine(frame, elapsedTime, height)
+						end
+					end
+				end,
+			}
+
+		end,
+	},
+	{
+		name = "ls_Glass",
+		canLoad = function(self)
+			local glassFrame1 = LSGlassFrame1 ---@diagnostic disable-line: undefined-global
+			return type(glassFrame1) == "table" and type(glassFrame1.ChatFrame) == "table" and glassFrame1.ChatFrame:GetName() == "ChatFrame1"
+		end,
+		load = function(self)
+
+			---@class LSGlassFramePolyfillMessageFrame : Frame
+			---@field public ChatFrame ChatFrame
+			---@field public activeMessages LSGlassFramePolyfillActiveMessageFrame[]
+
+			---@class LSGlassFramePolyfillActiveMessageFrame : Frame
+			---@field public Text FontString
+			---@field public GetText fun(self: LSGlassFramePolyfillActiveMessageFrame): string
+			---@field public SetText fun(self: LSGlassFramePolyfillActiveMessageFrame, text: string)
+
+			---@type LSGlassFramePolyfillMessageFrame[]
+			local glassFrames = {}
+			local glassFrameCount = 0
+
+			for i = 1, NUM_CHAT_WINDOWS + 1000 do
+				local glassFrame = _G[format("LSGlassFrame%d", i)] ---@type LSGlassFramePolyfillMessageFrame?
+				if not glassFrame and i > NUM_CHAT_WINDOWS then
+					break
+				end
+				if glassFrame then
+					glassFrameCount = glassFrameCount + 1
+					glassFrames[glassFrameCount] = glassFrame
+				end
+			end
+
+			---@param line LSGlassFramePolyfillActiveMessageFrame
+			---@param elapsed number
+			---@param height? number
+			local function animateChatLine(line, elapsed, height)
+				local text = line:GetText()
+				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+					return
+				end
+				if not text then
+					return
+				end
+				local newText = GetNextAnimationFrame(line, text, elapsed, height)
+				if not newText then
+					return
+				end
+				line:SetText(newText)
+			end
+
+			---@type ChatEmotesThirdPartyAddOnInfoResult
+			return {
+				animatorHandler = function(elapsedTime)
+					for i = 1, glassFrameCount do
+						local glassFrame = glassFrames[i]
+						if glassFrame:IsVisible() then
+							local height ---@type number?
+							for _, activeMessage in ipairs(glassFrame.activeMessages) do
+								if activeMessage:IsVisible() then
+									if not height then
+										height = GetHeightForFontString(activeMessage.Text)
+									end
+									animateChatLine(activeMessage, elapsedTime, height)
+								end
+							end
 						end
 					end
 				end,
