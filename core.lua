@@ -6,7 +6,7 @@ local ChatFrame_AddMessageEventFilter = ChatFrame_AddMessageEventFilter or ChatF
 local ChatEdit_GetActiveWindow = ChatEdit_GetActiveWindow or ChatFrameUtil.GetActiveWindow ---@type fun(): ChatFrame?
 local ChatEdit_InsertLink = ChatEdit_InsertLink or ChatFrameUtil.InsertLink ---@type fun(text: string)
 local ChatFrame_OpenChat = ChatFrame_OpenChat or ChatFrameUtil.OpenChat ---@type fun(text: string)
-local issecretvalue = issecretvalue -- TODO: 12.0
+local issecretvalue = issecretvalue ---@type fun()? -- TODO: 12.0
 
 local _G = _G
 local strlenutf8 = _G.strlenutf8
@@ -2869,63 +2869,179 @@ local function InitChannelMonitor()
 	addon:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 end
 
-local function InitChattynator()
-	local Chattynator = Chattynator
-	if not Chattynator or not Chattynator.API or not Chattynator.API.GetHyperlinkHandler then
-		return
-	end
-	local handler = Chattynator.API.GetHyperlinkHandler()
-	if not handler then
-		return
-	end
-	---@class ChattynatorPolyfillMessageFrame : Frame
-	---@field public data { timestamp: number; text: string }
-	---@field public DisplayString FontString
-	---@field public UpdateWidgets fun(self, width: number)
-	---@return (fun(): ChattynatorPolyfillMessageFrame)?
-	local function getScrollingMessages()
-		for _, frame in ipairs({handler:GetChildren()}) do
-			if frame.ScrollingMessages then
-				return frame.ScrollingMessages.messagePool:EnumerateActive()
-			end
-		end
-	end
-	---@param line ChattynatorPolyfillMessageFrame
-	---@param elapsed number
-	---@param height? number
-	local function animateChatLine(line, elapsed, height)
-		local text = line.data.text
-		if issecretvalue and issecretvalue(text) then -- TODO: 12.0
-			return
-		end
-		if not text then
-			return
-		end
-		local newText = GetNextAnimationFrame(line.DisplayString, text, elapsed, height)
-		if not newText then
-			return
-		end
-		if text == newText then
-			return
-		end
-		line.data.text = newText
-		line.DisplayString:SetText(newText)
-		local textHeight = line.DisplayString:GetStringHeight()
-		line:SetHeight(textHeight)
-	end
-	-- local profiles = CHATTYNATOR_CONFIG and CHATTYNATOR_CONFIG.Profiles
-	-- local profile = profiles and CHATTYNATOR_CURRENT_PROFILE and profiles[CHATTYNATOR_CURRENT_PROFILE]
-	---@param elapsedTime number
-	function AnimatorHandler(elapsedTime)
-		-- local height = profile and profile.message_font_size or 14
-		local height ---@type number?
-		for frame in getScrollingMessages() do
-			if frame:IsVisible() then
-				if not height then
-					height = GetHeightForFontString(frame.DisplayString)
+---@class ChatEmotesThirdPartyAddOnInfo
+---@field public name string
+---@field public canLoad fun(self: ChatEmotesThirdPartyAddOnInfo): boolean?
+---@field public load fun(self: ChatEmotesThirdPartyAddOnInfo): ChatEmotesThirdPartyAddOnInfoResult?
+
+---@class ChatEmotesThirdPartyAddOnInfoResult
+---@field public animatorHandler? fun(elapsedTime: number)
+
+---@type ChatEmotesThirdPartyAddOnInfo[]
+local thirdPartyAddOns = {
+	{
+		name = "ls_Glass",
+		canLoad = function(self)
+			local glassFrame1 = LSGlassFrame1 ---@diagnostic disable-line: undefined-global
+			return type(glassFrame1) == "table" and type(glassFrame1.ChatFrame) == "table" and glassFrame1.ChatFrame:GetName() == "ChatFrame1"
+		end,
+		load = function(self)
+
+			---@class LSGlassFramePolyfillMessageFrame : Frame
+			---@field public ChatFrame ChatFrame
+			---@field public activeMessages LSGlassFramePolyfillActiveMessageFrame[]
+
+			---@class LSGlassFramePolyfillActiveMessageFrame : Frame
+			---@field public Text FontString
+			---@field public GetText fun(self: LSGlassFramePolyfillActiveMessageFrame): string
+			---@field public SetText fun(self: LSGlassFramePolyfillActiveMessageFrame, text: string)
+
+			---@type LSGlassFramePolyfillMessageFrame[]
+			local glassFrames = {}
+			local glassFrameCount = 0
+
+			for i = 1, NUM_CHAT_WINDOWS + 1000 do
+				local glassFrame = _G[format("LSGlassFrame%d", i)] ---@type LSGlassFramePolyfillMessageFrame?
+				if not glassFrame and i > NUM_CHAT_WINDOWS then
+					break
 				end
-				animateChatLine(frame, elapsedTime, height)
+				if glassFrame then
+					glassFrameCount = glassFrameCount + 1
+					glassFrames[glassFrameCount] = glassFrame
+				end
 			end
+
+			---@param line LSGlassFramePolyfillActiveMessageFrame
+			---@param elapsed number
+			---@param height? number
+			local function animateChatLine(line, elapsed, height)
+				local text = line:GetText()
+				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+					return
+				end
+				if not text then
+					return
+				end
+				local newText = GetNextAnimationFrame(line, text, elapsed, height)
+				if not newText then
+					return
+				end
+				line:SetText(newText)
+			end
+
+			---@type ChatEmotesThirdPartyAddOnInfoResult
+			return {
+				animatorHandler = function(elapsedTime)
+					for i = 1, glassFrameCount do
+						local glassFrame = glassFrames[i]
+						if glassFrame:IsVisible() then
+							local height ---@type number?
+							for _, activeMessage in ipairs(glassFrame.activeMessages) do
+								if activeMessage:IsVisible() then
+									if not height then
+										height = GetHeightForFontString(activeMessage.Text)
+									end
+									animateChatLine(activeMessage, elapsedTime, height)
+								end
+							end
+						end
+					end
+				end,
+			}
+
+		end,
+	},
+	{
+		name = "Chattynator",
+		canLoad = function(self)
+			---@diagnostic disable-next-line: undefined-global
+			local Chattynator = Chattynator
+			if type(Chattynator) ~= "table" or type(Chattynator.API) ~= "table" or type(Chattynator.API.GetHyperlinkHandler) ~= "function" then
+				return
+			end
+			---@diagnostic disable-next-line: inject-field
+			self.GetHyperlinkHandler = Chattynator.API.GetHyperlinkHandler
+			return true
+		end,
+		load = function(self)
+
+			---@class ChattynatorPolyfillHandler
+			---@field public GetChildren fun(self: ChattynatorPolyfillHandler): ...: { ScrollingMessages?: { messagePool: { EnumerateActive: fun(self): (fun(): ChattynatorPolyfillMessageFrame) } } }
+
+			---@diagnostic disable-next-line: undefined-field
+			local handler = self.GetHyperlinkHandler ---@type ChattynatorPolyfillHandler
+
+			---@class ChattynatorPolyfillMessageFrame : Frame
+			---@field public data { timestamp: number; text: string }
+			---@field public DisplayString FontString
+			---@field public UpdateWidgets fun(self, width: number)
+
+			local function getScrollingMessages()
+				for _, frame in ipairs({handler:GetChildren()}) do
+					if frame.ScrollingMessages then
+						return frame.ScrollingMessages.messagePool:EnumerateActive()
+					end
+				end
+			end
+
+			---@param line ChattynatorPolyfillMessageFrame
+			---@param elapsed number
+			---@param height? number
+			local function animateChatLine(line, elapsed, height)
+				local text = line.data.text
+				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+					return
+				end
+				if not text then
+					return
+				end
+				local newText = GetNextAnimationFrame(line, text, elapsed, height)
+				if not newText then
+					return
+				end
+				if text == newText then
+					return
+				end
+				line.data.text = newText
+				line.DisplayString:SetText(newText)
+				local textHeight = line.DisplayString:GetStringHeight()
+				line:SetHeight(textHeight)
+			end
+
+			-- local profiles = CHATTYNATOR_CONFIG and CHATTYNATOR_CONFIG.Profiles
+			-- local profile = profiles and CHATTYNATOR_CURRENT_PROFILE and profiles[CHATTYNATOR_CURRENT_PROFILE]
+
+			---@type ChatEmotesThirdPartyAddOnInfoResult
+			return {
+				animatorHandler = function(elapsedTime)
+					-- local height = profile and profile.message_font_size or 14
+					local height ---@type number?
+					for frame in getScrollingMessages() do
+						if frame:IsVisible() then
+							if not height then
+								height = GetHeightForFontString(frame.DisplayString)
+							end
+							animateChatLine(frame, elapsedTime, height)
+						end
+					end
+				end,
+			}
+
+		end,
+	},
+}
+
+local function InitThirdPartyAddOns()
+	for _, addOnInfo in ipairs(thirdPartyAddOns) do
+		if addOnInfo:canLoad() then
+			local result = addOnInfo:load()
+			if not result then
+				break
+			end
+			if result.animatorHandler then
+				AnimatorHandler = result.animatorHandler
+			end
+			break
 		end
 	end
 end
@@ -2939,7 +3055,7 @@ function addon:ADDON_LOADED(event, name)
 		InitDB()
 		Init()
 		InitChannelMonitor()
-		InitChattynator()
+		InitThirdPartyAddOns()
 	end)
 end
 
