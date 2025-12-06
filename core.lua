@@ -2898,7 +2898,7 @@ local thirdPartyAddOns = {
 			---@field public GetChildren fun(self: ChattynatorPolyfillHandler): ...: { ScrollingMessages?: { messagePool: { EnumerateActive: fun(self): (fun(): ChattynatorPolyfillMessageFrame) } } }
 
 			---@diagnostic disable-next-line: undefined-field
-			local handler = self.GetHyperlinkHandler ---@type ChattynatorPolyfillHandler
+			local handler = self.GetHyperlinkHandler() ---@type ChattynatorPolyfillHandler
 
 			---@class ChattynatorPolyfillMessageFrame : Frame
 			---@field public data { timestamp: number; text: string }
