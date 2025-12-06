@@ -135,6 +135,7 @@ local ignoreChannels = {
 	-- [39] = true, -- ChromieTime (Chromie Time - Mists of Pandaria)
 	-- [40] = true, -- ChromieTime (Chromie Time - Warlords of Draenor)
 	-- [41] = true, -- ChromieTime (Chromie Time - Legion)
+	[42] = true, -- Trade (Services) - %s
 }
 
 ---@type table<ChatFrame, true?>
@@ -2993,7 +2994,7 @@ local thirdPartyAddOns = {
 			---@param elapsed number
 			---@param height? number
 			local function animateChatLine(line, elapsed, height)
-				local text = line:GetText()
+				local text = line.Text:GetText()
 				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
 					return
 				end
@@ -3004,7 +3005,7 @@ local thirdPartyAddOns = {
 				if not newText then
 					return
 				end
-				line:SetText(newText)
+				line.Text:SetText(newText)
 			end
 
 			---@type ChatEmotesThirdPartyAddOnInfoResult
