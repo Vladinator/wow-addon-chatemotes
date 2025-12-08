@@ -1727,6 +1727,7 @@ do
 	function UIButtonMixin:OnLoad()
 		self:SetFrameStrata("LOW")
 		self:SetSize(32, 32)
+		self:SetClampRectInsets(4, -4, -4, 4)
 		self:SetClampedToScreen(true)
 		self:UpdatePosition()
 		self:UpdateTexture()
