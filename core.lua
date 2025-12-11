@@ -2451,8 +2451,8 @@ end
 
 -- TODO: the animation support should be moved into the library and instead register the areas which one wishes it to update
 local CreateAnimator
-local AnimatorHandler
 local GetNextAnimationFrame
+local ActiveThirdPartyPlugin ---@type ChatEmotesThirdPartyAddOnInfoResult?
 
 do
 
@@ -2702,7 +2702,7 @@ do
 	end
 
 	---@param elapsedTime number
-	function AnimatorHandler(elapsedTime)
+	local function DefaultAnimatorHandler(elapsedTime)
 		for chatFrame, _ in pairs(hookedChatFrames) do
 			if chatFrame:IsVisible() then
 				local height
@@ -2759,7 +2759,19 @@ do
 			end
 		end
 
-		AnimatorHandler(elapsedTime)
+		if not ActiveThirdPartyPlugin or not ActiveThirdPartyPlugin.animatorHandler then
+			DefaultAnimatorHandler(elapsedTime)
+			elapsedTime = 0
+			return
+		end
+
+		local success, error = pcall(ActiveThirdPartyPlugin.animatorHandler, elapsedTime)
+
+		if not success then
+			print(format("|cffFF5555%s had an error with %s: %s|r", addonName, ActiveThirdPartyPlugin.name, tostring(error)))
+			ActiveThirdPartyPlugin = nil
+			DefaultAnimatorHandler(elapsedTime)
+		end
 
 		elapsedTime = 0
 
@@ -2877,6 +2889,7 @@ end
 ---@field public load fun(self: ChatEmotesThirdPartyAddOnInfo): ChatEmotesThirdPartyAddOnInfoResult?
 
 ---@class ChatEmotesThirdPartyAddOnInfoResult
+---@field public name string
 ---@field public animatorHandler? fun(elapsedTime: number)
 
 ---@type ChatEmotesThirdPartyAddOnInfo[]
@@ -2896,46 +2909,42 @@ local thirdPartyAddOns = {
 		load = function(self)
 
 			---@class ChattynatorPolyfillHandler
-			---@field public GetChildren fun(self: ChattynatorPolyfillHandler): ...: { ScrollingMessages?: { messagePool: { EnumerateActive: fun(self): (fun(): ChattynatorPolyfillMessageFrame) } } }
+			---@field public GetChildren fun(self: ChattynatorPolyfillHandler): ...: { ScrollingMessages?: { visibleLines?: table<number, ChattynatorPolyfillMessageFontString> } }
 
 			---@diagnostic disable-next-line: undefined-field
 			local handler = self.GetHyperlinkHandler() ---@type ChattynatorPolyfillHandler
 
-			---@class ChattynatorPolyfillMessageFrame : Frame
-			---@field public data { timestamp: number; text: string }
-			---@field public DisplayString FontString
-			---@field public UpdateWidgets fun(self, width: number)
+			---@class ChattynatorPolyfillMessageFontString : FontString
+			---@field public messageInfo { timestamp: number, message: string, r: number, g: number, b: number }
 
 			local function getScrollingMessages()
 				for _, frame in ipairs({handler:GetChildren()}) do
 					if frame.ScrollingMessages then
-						return frame.ScrollingMessages.messagePool:EnumerateActive()
+						return frame.ScrollingMessages.visibleLines
 					end
 				end
 			end
 
-			---@param line ChattynatorPolyfillMessageFrame
+			---@param fontString ChattynatorPolyfillMessageFontString
 			---@param elapsed number
 			---@param height? number
-			local function animateChatLine(line, elapsed, height)
-				local text = line.data.text
+			local function animateChatLine(fontString, elapsed, height)
+				local text = fontString:GetText()
 				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
 					return
 				end
 				if not text then
 					return
 				end
-				local newText = GetNextAnimationFrame(line, text, elapsed, height)
+				local newText = GetNextAnimationFrame(fontString, text, elapsed, height)
 				if not newText then
 					return
 				end
 				if text == newText then
 					return
 				end
-				line.data.text = newText
-				line.DisplayString:SetText(newText)
-				local textHeight = line.DisplayString:GetStringHeight()
-				line:SetHeight(textHeight)
+				fontString.messageInfo.message = newText
+				fontString:SetText(newText)
 			end
 
 			-- local profiles = CHATTYNATOR_CONFIG and CHATTYNATOR_CONFIG.Profiles
@@ -2943,15 +2952,16 @@ local thirdPartyAddOns = {
 
 			---@type ChatEmotesThirdPartyAddOnInfoResult
 			return {
+				name = self.name,
 				animatorHandler = function(elapsedTime)
 					-- local height = profile and profile.message_font_size or 14
 					local height ---@type number?
-					for frame in getScrollingMessages() do
-						if frame:IsVisible() then
+					for _, fontString in pairs(getScrollingMessages()) do
+						if fontString:IsVisible() then
 							if not height then
-								height = GetHeightForFontString(frame.DisplayString)
+								height = GetHeightForFontString(fontString)
 							end
-							animateChatLine(frame, elapsedTime, height)
+							animateChatLine(fontString, elapsedTime, height)
 						end
 					end
 				end,
@@ -3011,6 +3021,7 @@ local thirdPartyAddOns = {
 
 			---@type ChatEmotesThirdPartyAddOnInfoResult
 			return {
+				name = self.name,
 				animatorHandler = function(elapsedTime)
 					for i = 1, glassFrameCount do
 						local glassFrame = glassFrames[i]
@@ -3036,13 +3047,7 @@ local thirdPartyAddOns = {
 local function InitThirdPartyAddOns()
 	for _, addOnInfo in ipairs(thirdPartyAddOns) do
 		if addOnInfo:canLoad() then
-			local result = addOnInfo:load()
-			if not result then
-				break
-			end
-			if result.animatorHandler then
-				AnimatorHandler = result.animatorHandler
-			end
+			ActiveThirdPartyPlugin = addOnInfo:load()
 			break
 		end
 	end
