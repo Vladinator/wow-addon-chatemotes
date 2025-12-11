@@ -3,7 +3,7 @@
 ## Title: Chat Emotes
 ## Notes: Yet another emotes related chat addon, jeez...
 ## Author: Vladinator (Vladinator-TarrenMill)
-## Version: 1.15.8.251207 (@project-version@)
+## Version: 1.15.8.251211 (@project-version@)
 ## SavedVariables: ChatEmotesDB
 ## OptionalDeps: Chattynator, ls_Glass, Prat-3.0
 ## X-Curse-Project-ID: 551565
