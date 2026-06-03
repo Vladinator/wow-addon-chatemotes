@@ -1517,7 +1517,11 @@ do
 			-- 	self.Log.Bar.SearchBox:SetText(text)
 			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
-			view:SetElementExtent(ScrollBoxEmoteButtonSize)
+			if view.SetElementSize then
+				view:SetElementSize(ScrollBoxEmoteButtonSize, ScrollBoxEmoteButtonSize)
+			else
+				view:SetElementExtent(ScrollBoxEmoteButtonSize)
+			end
 			---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
 			---@param emote ChatEmotesLib-1.0_Emote
 			view:SetElementInitializer("ChatEmotesEmoteButton", function(button, emote)
@@ -1559,7 +1563,11 @@ do
 			-- 	end
 			-- end
 			local view = CreateScrollBoxListGridView() -- CreateScrollBoxListLinearView()
-			view:SetElementExtent(ScrollBoxEmoteButtonSize)
+			if view.SetElementSize then
+				view:SetElementSize(ScrollBoxEmoteButtonSize, ScrollBoxEmoteButtonSize)
+			else
+				view:SetElementExtent(ScrollBoxEmoteButtonSize)
+			end
 			---@param button ChatEmotesUIScrollBoxEmoteButtonMixin
 			---@param emote ChatEmotesLib-1.0_Emote
 			view:SetElementInitializer("ChatEmotesEmoteButton", function(button, emote)
