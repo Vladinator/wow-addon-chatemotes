@@ -14,8 +14,14 @@
     "Lua.workspace.library": [
         "~\\.vscode\\extensions\\ketho.wow-api-0.22.3\\Annotations\\Core"
     ],
+    "Lua.type.weakUnionCheck": true,
     "Lua.diagnostics.globals": [
+        "AUTOCOMPLETE_DEFAULT_Y_OFFSET",
+        "AUTOCOMPLETE_MAX_BUTTONS",
+        "AutoCompleteBox",
+        "ButtonFrameTemplate_HidePortrait",
         "CallbackRegistryMixin",
+        "CHAT_FRAME_DEFAULT_FONT_SIZE",
         "ChatEdit_ActivateChat",
         "ChatEdit_GetActiveWindow",
         "ChatEdit_InsertLink",
@@ -26,14 +32,26 @@
         "CreateScrollBoxListGridView",
         "CreateScrollBoxListLinearView",
         "DataProviderMixin",
+        "DEFAULT",
+        "DEFAULT_CHAT_FRAME",
+        "EditBox_ClearFocus",
+        "EditBox_ClearHighlight",
+        "EditBox_HighlightText",
+        "EditBox_OnTabPressed",
+        "FauxScrollFrame_Update",
         "GameTooltip",
+        "GameTooltip_SetTitle",
+        "LARGE",
         "LibStub",
         "NUM_CHAT_WINDOWS",
-        "ReloadUI",
         "RELOADUI",
         "ScrollBoxConstants",
         "ScrollBoxListMixin",
         "ScrollUtil",
-        "SetScrollBoxButtonAlternateState"
-    ],
+        "SetScrollBoxButtonAlternateState",
+        "SlashCmdList",
+        "SMALL",
+        "SOUNDKIT",
+        "UISpecialFrames"
+    ]
 }
