@@ -6,7 +6,7 @@ local ChatFrame_AddMessageEventFilter = ChatFrame_AddMessageEventFilter or ChatF
 local ChatEdit_GetActiveWindow = ChatEdit_GetActiveWindow or ChatFrameUtil.GetActiveWindow ---@type fun(): ChatFrame?
 local ChatEdit_InsertLink = ChatEdit_InsertLink or ChatFrameUtil.InsertLink ---@type fun(text: string)
 local ChatFrame_OpenChat = ChatFrame_OpenChat or ChatFrameUtil.OpenChat ---@type fun(text: string)
-local issecretvalue = issecretvalue ---@type fun(value: any)? -- TODO: 12.0
+local issecretvalue = issecretvalue or function(value) return false end
 
 local _G = _G
 local strlenutf8 = _G.strlenutf8
@@ -514,7 +514,7 @@ local AutoComplete do
 		end
 		local index = 0
 		for i = 1, emotes[0] do
-			local emote = emotes[i] ---@type ChatEmotesLib-1.0_Emote
+			local emote = emotes[i]
 			if not emote.ignoreSuggestion then
 				local isFavorite = IsFavorite(emote)
 				local priority = (isFavorite and 0 or 1000) + (emote.name:find(query, nil, true) or (100 + (emote.name:lower():find(query:lower(), nil, true) or 99)))
@@ -1961,6 +1961,8 @@ do
 	---@field public UpdateOtherStates function
 	---@field public value? any
 	---@field public Label? FontString
+	---@field public SetChecked fun(self: ConfigWidget, checked?: boolean)
+	---@field public GetChecked fun(self: ConfigWidget): boolean
 
 	---@class ConfigInputFactory
 	local InputFactory = {}
@@ -1988,7 +1990,7 @@ do
 				end
 			elseif widgetType == "CheckButton" then
 				widget.value = value
-				widget:SetChecked(widget.value) ---@diagnostic disable-line: undefined-field
+				widget:SetChecked(widget.value)
 			end
 		end
 
@@ -2078,7 +2080,7 @@ do
 		local function Common_OnSave(self)
 			local widgetType = self:GetObjectType()
 			if widgetType == "CheckButton" then
-				self.value = not not self:GetChecked() ---@diagnostic disable-line: undefined-field
+				self.value = not not self:GetChecked()
 			end
 			if not self:CanSave() then
 				self:OnShow()
@@ -2566,7 +2568,7 @@ do
 			if not emote.duration.length then
 				local length = 0
 				for index, _ in pairs(emote.duration) do if index > length then length = index end end
-				emote.duration.length = length ---@diagnostic disable-line: inject-field
+				emote.duration.length = length
 			end
 			for index = 1, emote.duration.length do
 				local value = emote.duration[index]
@@ -2744,7 +2746,7 @@ do
 			return
 		end
 		local text = messageInfo.message
-		if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+		if issecretvalue(text) then
 			return
 		end
 		if not text then
@@ -2966,28 +2968,25 @@ end
 
 ---@type ChatEmotesThirdPartyAddOnInfo[]
 local thirdPartyAddOns = {
+	---@class ChatEmotesThirdPartyAddOnInfoChattynator : ChatEmotesThirdPartyAddOnInfo
 	{
 		name = "Chattynator",
-		canLoad = function(self)
-			---@diagnostic disable-next-line: undefined-global
+		canLoad = function(...)
+			local self = ... ---@class ChatEmotesThirdPartyAddOnInfoChattynator
 			local Chattynator = Chattynator
 			if type(Chattynator) ~= "table" or type(Chattynator.API) ~= "table" or type(Chattynator.API.GetHyperlinkHandler) ~= "function" then
 				return
 			end
-			---@diagnostic disable-next-line: inject-field
-			self.GetHyperlinkHandler = Chattynator.API.GetHyperlinkHandler
+			self.GetHyperlinkHandler = Chattynator.API.GetHyperlinkHandler ---@type fun(): ChattynatorPolyfillHandler
 			return true
 		end,
+		---@param self ChatEmotesThirdPartyAddOnInfoChattynator
 		load = function(self)
 
 			---@class ChattynatorPolyfillHandler
-			---@field public GetChildren fun(self: ChattynatorPolyfillHandler): ...: { ScrollingMessages?: { visibleLines?: table<number, ChattynatorPolyfillMessageFontString> } }
+			---@field public GetChildren fun(self: ChattynatorPolyfillHandler): ...: { ScrollingMessages?: { visibleLines?: table<number, FontString> } }
 
-			---@diagnostic disable-next-line: undefined-field
-			local handler = self.GetHyperlinkHandler() ---@type ChattynatorPolyfillHandler
-
-			---@class ChattynatorPolyfillMessageFontString : FontString
-			---@field public messageInfo { timestamp: number, message: string, r: number, g: number, b: number }
+			local handler = self.GetHyperlinkHandler()
 
 			local function getScrollingMessages()
 				for _, frame in ipairs({handler:GetChildren()}) do
@@ -2997,12 +2996,12 @@ local thirdPartyAddOns = {
 				end
 			end
 
-			---@param fontString ChattynatorPolyfillMessageFontString
+			---@param fontString FontString
 			---@param elapsed number
 			---@param height? number
 			local function animateChatLine(fontString, elapsed, height)
 				local text = fontString:GetText()
-				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+				if issecretvalue(text) then
 					return
 				end
 				if not text then
@@ -3015,7 +3014,6 @@ local thirdPartyAddOns = {
 				if text == newText then
 					return
 				end
-				fontString.messageInfo.message = newText
 				fontString:SetText(newText)
 			end
 
@@ -3041,10 +3039,11 @@ local thirdPartyAddOns = {
 
 		end,
 	},
+	---@class ChatEmotesThirdPartyAddOnInfoLSGlass : ChatEmotesThirdPartyAddOnInfo
 	{
 		name = "ls_Glass",
 		canLoad = function(self)
-			local glassFrame1 = LSGlassFrame1 ---@diagnostic disable-line: undefined-global
+			local glassFrame1 = LSGlassFrame1
 			return type(glassFrame1) == "table" and type(glassFrame1.ChatFrame) == "table" and glassFrame1.ChatFrame:GetName() == "ChatFrame1"
 		end,
 		load = function(self)
@@ -3078,7 +3077,7 @@ local thirdPartyAddOns = {
 			---@param height? number
 			local function animateChatLine(line, elapsed, height)
 				local text = line.Text:GetText()
-				if issecretvalue and issecretvalue(text) then -- TODO: 12.0
+				if issecretvalue(text) then
 					return
 				end
 				if not text then
